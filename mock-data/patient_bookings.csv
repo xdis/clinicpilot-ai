@@ -1,0 +1,5 @@
+booking_id,patient_id,doctor_id,treatment_id,booking_date,booking_time,status,notes
+B1001,P001,D101,T001,2026-11-05,09:00:00,Confirmed,"Routine annual checkup."
+B1002,P002,D103,T003,2026-11-06,14:30:00,Confirmed,"Skin rash on left arm for 2 weeks."
+B1003,P003,D101,T004,2026-10-20,10:15:00,Completed,"Seasonal flu shot administered."
+B1004,P001,D104,T005,2026-11-15,11:00:00,Confirmed,"Follow up on knee pain."

@@ -1,0 +1,100 @@
+// ClinicPilot AI relational schema (SQLite for local demo; portable to PostgreSQL/MySQL).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Clinic {
+  id                    String   @id @map("clinic_id")
+  name                  String   @map("clinic_name")
+  address               String
+  phone                 String
+  operatingHours        String   @map("operating_hours")
+  cancellationPolicy    String   @map("cancellation_policy")
+  emergencyInstructions String   @map("emergency_instructions")
+  doctors               Doctor[]
+
+  @@map("clinics")
+}
+
+model Doctor {
+  id                 String             @id @map("doctor_id")
+  clinicId           String             @map("clinic_id")
+  fullName           String             @map("full_name")
+  specialty          String
+  languagesSpoken    String             @map("languages_spoken")
+  consultationFeeUsd Float              @map("consultation_fee_usd")
+  bio                String
+  clinic             Clinic             @relation(fields: [clinicId], references: [id])
+  bookings           PatientBooking[]
+  history            TreatmentHistory[]
+
+  @@map("doctors")
+}
+
+model Treatment {
+  id                       String           @id @map("treatment_id")
+  name                     String           @map("treatment_name")
+  category                 String
+  durationMinutes          Int              @map("duration_minutes")
+  priceUsd                 Float            @map("price_usd")
+  preTreatmentInstructions String           @map("pre_treatment_instructions")
+  bookings                 PatientBooking[]
+
+  @@map("treatments")
+}
+
+model Patient {
+  id               String             @id @map("patient_id")
+  firstName        String             @map("first_name")
+  lastName         String             @map("last_name")
+  dob              String
+  gender           String
+  phone            String
+  email            String
+  knownAllergies   String             @map("known_allergies")
+  emergencyContact String             @map("emergency_contact")
+  bookings         PatientBooking[]
+  history          TreatmentHistory[]
+
+  @@map("patients")
+}
+
+model PatientBooking {
+  id             String    @id @map("booking_id")
+  patientId      String    @map("patient_id")
+  doctorId       String    @map("doctor_id")
+  treatmentId    String    @map("treatment_id")
+  bookingDate    String    @map("booking_date") // YYYY-MM-DD (clinic local date)
+  bookingTime    String    @map("booking_time") // HH:MM:SS (clinic local time)
+  status         String
+  notes          String    @default("")
+  source         String    @default("seed") // seed | chatbot | api
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  patient        Patient   @relation(fields: [patientId], references: [id])
+  doctor         Doctor    @relation(fields: [doctorId], references: [id])
+  treatment      Treatment @relation(fields: [treatmentId], references: [id])
+
+  @@index([patientId, bookingDate])
+  @@map("patient_bookings")
+}
+
+model TreatmentHistory {
+  id                   String  @id @map("record_id")
+  patientId            String  @map("patient_id")
+  doctorId             String  @map("doctor_id")
+  visitDate            String  @map("visit_date")
+  chiefComplaint       String  @map("chief_complaint")
+  diagnosis            String
+  prescribedMedication String  @map("prescribed_medication")
+  doctorNotes          String  @map("doctor_notes")
+  patient              Patient @relation(fields: [patientId], references: [id])
+  doctor               Doctor  @relation(fields: [doctorId], references: [id])
+
+  @@map("patient_treatment_history")
+}

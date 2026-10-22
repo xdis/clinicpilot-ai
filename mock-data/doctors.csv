@@ -1,0 +1,5 @@
+doctor_id,clinic_id,full_name,specialty,languages_spoken,consultation_fee_usd,bio
+D101,C001,Dr. Sarah Jenkins,General Practice,"English, Spanish",150.00,"Board-certified family physician with over 12 years of experience in preventative care and chronic disease management."
+D102,C001,Dr. Michael Chang,Pediatrics,"English, Mandarin",180.00,"Pediatric specialist focusing on child development, adolescent medicine, and pediatric vaccinations."
+D103,C002,Dr. Elena Rostova,Dermatology,"English, Russian",220.00,"Dermatologist specializing in eczema, acne treatments, routine skin cancer screenings, and cosmetic procedures."
+D104,C001,Dr. James Wilson,Orthopedics,"English",250.00,"Orthopedic specialist focusing on joint pain, sports injuries, and physical rehabilitation guidance."

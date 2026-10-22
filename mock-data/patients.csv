@@ -1,0 +1,4 @@
+patient_id,first_name,last_name,dob,gender,phone,email,known_allergies,emergency_contact
+P001,John,Doe,1988-05-14,Male,+1-555-018-3311,john.doe@example.com,"Penicillin, Peanuts","Jane Doe (Spouse) - +1-555-018-3312"
+P002,Alice,Smith,1995-11-20,Female,+1-555-012-7744,alice.smith@example.com,"None","Bob Smith (Father) - +1-555-012-7745"
+P003,Robert,Johnson,1972-03-08,Male,+1-555-016-5599,robert.j@example.com,"Sulfa drugs, Latex","Emily Johnson (Wife) - +1-555-016-5500"

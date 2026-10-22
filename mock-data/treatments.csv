@@ -1,0 +1,6 @@
+treatment_id,treatment_name,category,duration_minutes,price_usd,pre_treatment_instructions
+T001,General Health Checkup,Preventative Care,30,150.00,"Fast for at least 8 hours prior to your visit if blood tests are scheduled."
+T002,Pediatric Vaccination,Pediatrics,15,80.00,"Please bring the child's official vaccination record booklet."
+T003,Dermatology Consultation,Dermatology,30,200.00,"Ensure skin is clean and free of makeup or heavy lotions on the area being evaluated."
+T004,Flu Shot Injection,Immunization,15,40.00,"No prior preparation required. Inform doctor if you currently have a fever."
+T005,Joint & Pain Consultation,Orthopedics,45,230.00,"Wear loose-fitting clothing to allow examination of the affected joints."

@@ -1,0 +1,3 @@
+record_id,patient_id,doctor_id,visit_date,chief_complaint,diagnosis,prescribed_medication,doctor_notes
+H9001,P003,D101,2026-10-20,"Mild persistent cough and fever for 3 days.","Upper Respiratory Tract Infection","Amoxicillin 500mg, Cough Syrup","Patient presents with low-grade fever (37.8C) and clear lung sounds. Prescribed oral antibiotics. Advice rest and hydration."
+H9002,P001,D101,2026-04-12,"Annual routine health checkup.","Healthy / Normal Range","Multivitamins","Blood pressure normal (120/80). Fasting glucose normal. Recommended light exercise 3x per week."

@@ -1,0 +1,22 @@
+# secrets
+.env
+*.env.local
+# dependencies / builds
+node_modules/
+dist/
+build/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+coverage/
+# local databases
+*.db
+*.db-journal
+*.sqlite3
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+# eval outputs
+evals/results/*.json
