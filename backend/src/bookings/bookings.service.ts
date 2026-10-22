@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -137,7 +137,7 @@ export class BookingsService {
         where: { idempotencyKey: dto.idempotencyKey },
         include: bookingInclude,
       });
-      if (existing) return { booking: toView(existing), idempotentReplay: true };
+      if (existing) return { booking: toView(this.assertSameRequest(existing, dto)), idempotentReplay: true };
     }
 
     const problems = await this.findProblems(dto);
@@ -166,6 +166,23 @@ export class BookingsService {
         // otherwise a concurrent insert took the same booking id: retry with the next one
       }
     }
+  }
+
+  /** An idempotency key may only be replayed with the same booking details. */
+  private assertSameRequest(existing: BookingRow, dto: CreateBookingDto): BookingRow {
+    const same =
+      existing.patientId === dto.patientId &&
+      existing.doctorId === dto.doctorId &&
+      existing.treatmentId === dto.treatmentId &&
+      existing.bookingDate === dto.bookingDate &&
+      existing.bookingTime === normalizeTime(dto.bookingTime);
+    if (!same) {
+      throw new ConflictException({
+        code: 'IDEMPOTENCY_KEY_REUSED',
+        message: `Idempotency key already used for booking ${existing.id} with different details.`,
+      });
+    }
+    return existing;
   }
 
   private insert(dto: CreateBookingDto, time: string) {

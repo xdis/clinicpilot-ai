@@ -196,6 +196,7 @@ Errors use one envelope: `{"error": {"code", "message", "details", "requestId"}}
 |---|---|
 | Emergency guard (rules, before the LLM) | Red-flag phrases (chest pain, can't breathe, throat swelling, anaphylaxis, …) short-circuit to 911 and each clinic's emergency instructions, plus an epinephrine reminder for the peanut allergy. No booking, no LLM call. |
 | Medical scope | No diagnosis, no medication advice; recommendations carry a disclaimer. Allergy questions explain there is no allergist and that a GP can assess and refer. |
+| Third-party bookings | Requests to book for a family member or another patient id are declined with the clinic phone numbers; nothing is written to the signed-in patient's record. |
 | Prompt injection | Patterns such as "ignore previous instructions" or references to another patient are flagged. The patient id is set by the gateway for the session (always P001 in this demo), never by the model, so a message cannot make the agent read or book for another patient; the reply says so. (API-level authorisation is out of scope; see limitations.) |
 | Grounding | Answers use only supplied facts; unsupported citations are removed. |
 | Write safety | Writes only after explicit confirmation; backend re-validates; idempotency key. |
@@ -206,10 +207,11 @@ Errors use one envelope: `{"error": {"code", "message", "details", "requestId"}}
 | Suite | Scope | Result |
 |---|---|---|
 | Backend unit (`npm test`) | opening-hours parser, closed days, appointment overrun, specialty mapping, timezone | 5 passed |
-| Backend API (`npm run test:e2e`) | real Nest app + fresh SQLite: list, profile, create, idempotent replay, rule violations (3 at once), dry-run validation, DTO validation, impossible date, snake_case `patient_id` on `/api/chat`, 404 | 11 passed |
-| AI service (`pytest`, offline) | full agent with a rule-based `FakeLLM` and in-memory backend: routing, slot filling, inference, confirmation gate, correction after the summary, closed-day rejection, emergency short-circuit, injection, abandon, session isolation, retrieval, entity resolution, citation guard, **MCP server contract test** (in-process MCP client) | 19 passed |
+| Backend API (`npm run test:e2e`) | real Nest app + fresh SQLite: list, profile, create, idempotent replay, idempotency-key reuse (409) and `Idempotency-Key` header, rule violations (3 at once), dry-run validation, DTO validation, impossible date, snake_case `patient_id` on `/api/chat`, 404 | 12 passed |
+| AI service (`pytest`, offline) | full agent with a rule-based `FakeLLM` and in-memory backend: routing, slot filling, inference, confirmation gate, correction after the summary, closed-day rejection, emergency short-circuit, injection, booking for a family member or another patient refused, unknown doctor not replaced, invalid calendar date explained, no pediatrician offered to adults, appointment list rendered from data (with closed-day flag), multi-part questions, abandon, session isolation, retrieval, entity resolution, citation guard, **MCP server contract test** (in-process MCP client, including list output) | 25 passed |
 | Frontend | ESLint + type-checked production build | clean |
-| **Scenario evals** (`make eval`, real LLM) | 24 multi-turn conversations, 36 turns, 89 checks | see below |
+| **Scenario evals** (`make eval`, real LLM) | 29 multi-turn conversations | see below |
+| **Black-box QA** (independent tester, real LLM) | 55 conversations + 30 direct API calls written without reading the code: date phrasings, typos, mind changes, Chinese/Cantonese, injection, other patients, double confirmation, concurrency, malformed requests | first pass 47/55; every finding fixed and turned into a regression test or eval case |
 
 CI (`.github/workflows/ci.yml`) runs the backend suites, the AI-service suite on Python 3.11 and 3.12, the frontend lint/build and a `docker compose build` on every push. The AI tests use `LLM_PROVIDER=fake`, so CI needs no API key and is deterministic.
 
@@ -244,6 +246,8 @@ Cases cover clinic info (hours, fees, languages, policies, preparation), symptom
 - **Treatment ↔ specialty mapping** (not present in the CSVs): Preventative Care → General Practice; Pediatrics → Pediatrics; Dermatology → Dermatology; Immunization → General Practice or Pediatrics; Orthopedics → Orthopedics.
 - **Dates and times** are clinic-local. The backend validates each booking in its own clinic's timezone; the agent resolves relative dates ("next Monday") in `CLINIC_TIMEZONE` (default America/New_York). `CLINIC_TODAY` pins the date for demos and tests.
 - **Cancelling or rescheduling existing bookings** is out of scope; the assistant gives the clinic's phone and cancellation policy.
+- **Language:** answers follow the patient's language (tested with Chinese and Cantonese); booking summaries and confirmations are English templates so the figures are always exact.
+- **Appointment lists** are rendered from the database, not summarised by the model, so none can be omitted; bookings on a day the clinic is normally closed are flagged.
 - **Data observation:** seeded booking B1004 (Dr. Wilson, 2026-11-15) falls on a Sunday when Metro Care is closed. Seed data is loaded as-is; new bookings are validated.
 
 ## 13. Limitations and next steps

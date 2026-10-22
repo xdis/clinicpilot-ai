@@ -42,6 +42,10 @@ class FakeLLM:
             last = name.split()[-1].lower()
             if did.lower() in m or last in m:
                 doctor = did
+        if doctor is None:
+            named = re.search(r"\bdr\.? ([a-z]+)", m)
+            if named:
+                doctor = "Dr. " + named.group(1).title()  # unknown names are passed through, like a real model would
         if doctor is None and re.search(r"\b(her|him|that doctor)\b", m):
             for h in reversed(history):
                 found = re.findall(r"\[(D\d{3})\]", h["content"])

@@ -34,7 +34,12 @@ class TurnAnalysis(BaseModel):
     treatment: str | None = Field(None, description="Treatment id (e.g. T003) or name the patient refers to, if any.")
     date: str | None = Field(None, description="Requested appointment date resolved to YYYY-MM-DD, if given.")
     time: str | None = Field(None, description="Requested appointment time as 24h HH:MM, if given.")
-    notes: str | None = Field(None, description="Short reason for the visit or symptoms, in the patient's words.")
+    date_problem: str | None = Field(
+        None, description="If the patient gave a date that does not exist or cannot be resolved (e.g. February 30), say so briefly."
+    )
+    notes: str | None = Field(
+        None, description="Medical reason for the visit or symptoms only, in the patient's words. Never dates, times or remarks."
+    )
 
 
 class MedicalSummary(BaseModel):

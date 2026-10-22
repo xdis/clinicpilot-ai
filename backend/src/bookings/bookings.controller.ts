@@ -1,5 +1,5 @@
-import { Body, Controller, Get, HttpCode, Module, Post, Query, Res } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Headers, HttpCode, Module, Post, Query, Res } from '@nestjs/common';
+import { ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto, ListBookingsQuery } from './dto/booking.dto';
@@ -25,7 +25,13 @@ export class BookingsController {
   @Post()
   @HttpCode(201)
   @ApiOperation({ summary: 'Create a booking. Called by the AI agent tool (REST or MCP) and the API.' })
-  async create(@Body() dto: CreateBookingDto, @Res({ passthrough: true }) res: Response) {
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Alternative to the idempotencyKey body field.' })
+  async create(
+    @Body() dto: CreateBookingDto,
+    @Res({ passthrough: true }) res: Response,
+    @Headers('idempotency-key') headerKey?: string,
+  ) {
+    if (!dto.idempotencyKey && headerKey) dto.idempotencyKey = headerKey.slice(0, 128);
     const result = await this.bookings.create(dto);
     if (result.idempotentReplay) res.status(200);
     return result;

@@ -10,7 +10,7 @@ An AI clinic assistant MVP. A patient chats in natural language to ask about cli
 - **Hybrid retrieval** (BM25 + LLM-inferred specialty, fused with RRF) with citations checked against retrieved sources.
 - **Deterministic guardrails**: emergency short-circuit, medical scope, prompt-injection handling, clinic opening-hours / specialty / date validation, idempotent booking creation.
 - **Agent trace panel** in the UI: intent, steps, tool calls, sources, tokens and latency for every turn.
-- **Tested and evaluated**: 35 automated tests (offline, run in CI) and a 24-scenario evaluation against the real LLM (24/24 cases, 100% intent accuracy).
+- **Tested and evaluated**: 42 automated tests (offline, run in CI), a 29-scenario evaluation against the real LLM, and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
 - Bonus: transcript summarizer, Langfuse tracing, Docker Compose, Kubernetes manifests.
 
 Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.
@@ -161,7 +161,7 @@ MCP server: `cd ai-service && .venv/bin/python -m app.mcp_server` (stdio) expose
 
 ```bash
 make test        # backend unit + API tests, AI-service offline tests (no API key), frontend lint + build
-make eval        # 24 scripted conversations against the running stack with the real LLM
+make eval        # 29 scripted conversations against the running stack with the real LLM
 ```
 
 Latest evaluation: 24/24 cases, 36/36 intents, 89/89 checks, p50 latency 1.2-1.3 s (three runs). See `evals/results/latest.md`. The eval expects the seed data, so `make eval` resets demo bookings before and after.

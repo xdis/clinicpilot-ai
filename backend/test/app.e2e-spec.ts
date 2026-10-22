@@ -70,6 +70,18 @@ describe('ClinicPilot backend (e2e)', () => {
     expect(res.body).toMatchObject({ idempotentReplay: true, booking: { bookingId: 'B1005' } });
   });
 
+  it('rejects reusing an idempotency key with different details, and accepts the Idempotency-Key header', async () => {
+    const conflict = await request(app.getHttpServer())
+      .post('/api/bookings')
+      .send({ patientId: 'P001', doctorId: 'D103', treatmentId: 'T003', bookingDate: '2026-10-27', bookingTime: '10:00', idempotencyKey: 'e2e-1' })
+      .expect(409);
+    expect(conflict.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    const body = { patientId: 'P001', doctorId: 'D104', treatmentId: 'T005', bookingDate: '2026-10-28', bookingTime: '11:00' };
+    const first = await request(app.getHttpServer()).post('/api/bookings').set('Idempotency-Key', 'hdr-1').send(body).expect(201);
+    const again = await request(app.getHttpServer()).post('/api/bookings').set('Idempotency-Key', 'hdr-1').send(body).expect(200);
+    expect(again.body.booking.bookingId).toBe(first.body.booking.bookingId);
+  });
+
   it('rejects a specialty mismatch, a closed day and a past date with a clear message', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/bookings')
