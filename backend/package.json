@@ -20,7 +20,7 @@
     "test:e2e": "rm -f prisma/test.db && DATABASE_URL=file:./test.db prisma migrate deploy >/dev/null && DATABASE_URL=file:./test.db ts-node prisma/seed.ts && DATABASE_URL=file:./test.db CLINIC_TODAY=2026-10-22 jest --config ./test/jest-e2e.json --runInBand",
     "db:setup": "prisma migrate deploy && ts-node prisma/seed.ts",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force --skip-seed && ts-node prisma/seed.ts"
+    "db:demo-reset": "ts-node prisma/clear-demo-bookings.ts && ts-node prisma/seed.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
