@@ -80,7 +80,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   patient: (id: string) => request<Patient>(`/patients/${id}`),
-  bookings: () => request<Booking[]>('/bookings'),
+  bookings: (patientId: string) => request<Booking[]>(`/bookings?patientId=${encodeURIComponent(patientId)}`),
   chat: (message: string, sessionId: string, patientId: string) =>
     request<ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, patientId }) }),
   summarize: (transcript: string) =>

@@ -4,7 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 mkdir -p "$ROOT/.logs"
 
-if ! grep -qE '^LLM_API_KEY=.+' "$ROOT/ai-service/.env" 2>/dev/null && ! grep -qE '^LLM_PROVIDER=fake' "$ROOT/ai-service/.env" 2>/dev/null; then
+if ! grep -qE '^LLM_PROVIDER=fake' "$ROOT/ai-service/.env" 2>/dev/null \
+  && { ! grep -qE '^LLM_API_KEY=.+' "$ROOT/ai-service/.env" 2>/dev/null || grep -qE '^LLM_API_KEY=your-api-key-here' "$ROOT/ai-service/.env"; }; then
   echo "ai-service/.env has no LLM_API_KEY. Add one (or set LLM_PROVIDER=fake for an offline smoke test)." >&2
   exit 1
 fi

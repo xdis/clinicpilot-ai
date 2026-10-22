@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 
 BOOKING_INTENTS = {"new_booking", "booking_update", "confirm_booking", "decline_booking", "abandon_booking"}
 _YES = re.compile(r"^\s*(yes|yep|yeah|y|sure|ok(ay)?|confirm(ed)?|correct|go ahead|book it|please do|sounds good)\b[\s.!]*$", re.I)
-_NO = re.compile(r"^\s*(no|nope|not quite|wrong|change)\b", re.I)
+_NO = re.compile(r"^\s*(no|nope|no thanks|not quite)[\s.!]*$", re.I)
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
@@ -248,7 +248,7 @@ class ClinicAgent:
         if s.get("awaiting_confirmation") and _YES.match(msg):
             a = TurnAnalysis(intent="confirm_booking", confidence=1.0)
             return {"analysis": a.model_dump(), "_detail": "confirm_booking (rule: explicit yes)"}
-        if s.get("awaiting_confirmation") and _NO.match(msg) and len(msg.split()) <= 3:
+        if s.get("awaiting_confirmation") and _NO.match(msg):
             a = TurnAnalysis(intent="decline_booking", confidence=1.0)
             return {"analysis": a.model_dump(), "_detail": "decline_booking (rule: explicit no)"}
         kb = self.kb

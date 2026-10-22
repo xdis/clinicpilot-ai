@@ -8,7 +8,8 @@ export class RequestIdMiddleware implements NestMiddleware {
   private readonly logger = new Logger('HTTP');
 
   use(req: Request & { requestId?: string }, res: Response, next: NextFunction) {
-    const id = (req.headers['x-request-id'] as string) || randomUUID();
+    const incoming = req.headers['x-request-id'];
+    const id = typeof incoming === 'string' && /^[A-Za-z0-9-]{1,64}$/.test(incoming) ? incoming : randomUUID();
     req.requestId = id;
     res.setHeader('x-request-id', id);
     const started = Date.now();

@@ -16,7 +16,7 @@
   {"id": "rec-child-vaccine", "turns": [
     {"user": "My 4 year old son needs his vaccinations.", "intent": ["recommendation", "new_booking"], "cites": ["D102"]}]},
   {"id": "query-next", "turns": [
-    {"user": "When is my next appointment?", "intent": ["booking_query"], "tools": ["list_bookings"], "reply_has": ["November 5"]}]},
+    {"user": "When is my next appointment?", "intent": ["booking_query"], "tools": ["list_bookings"], "reply_has": ["Jenkins"]}]},
   {"id": "query-knee-followup", "turns": [
     {"user": "Do I have anything booked for my knee?", "intent": ["booking_query"], "tools": ["list_bookings"], "reply_has": ["Wilson"]}]},
   {"id": "book-happy-path", "turns": [

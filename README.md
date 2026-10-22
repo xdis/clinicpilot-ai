@@ -10,7 +10,7 @@ An AI clinic assistant MVP. A patient chats in natural language to ask about cli
 - **Hybrid retrieval** (BM25 + LLM-inferred specialty, fused with RRF) with citations checked against retrieved sources.
 - **Deterministic guardrails**: emergency short-circuit, medical scope, prompt-injection handling, clinic opening-hours / specialty / date validation, idempotent booking creation.
 - **Agent trace panel** in the UI: intent, steps, tool calls, sources, tokens and latency for every turn.
-- **Tested and evaluated**: 31 automated tests (offline, CI) and a 24-scenario evaluation against the real LLM (24/24 cases, 100% intent accuracy).
+- **Tested and evaluated**: 35 automated tests (offline, run in CI) and a 24-scenario evaluation against the real LLM (24/24 cases, 100% intent accuracy).
 - Bonus: transcript summarizer, Langfuse tracing, Docker Compose, Kubernetes manifests.
 
 Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.
@@ -33,7 +33,8 @@ Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.
 ## Prerequisites
 
 - **Node.js 20+** (tested with 22) and npm
-- **Python 3.10+** (tested with 3.12)
+- **Python 3.11+** (tested with 3.12; CI runs 3.11 and 3.12)
+- macOS or Linux shell (on Windows, use WSL)
 - An LLM API key for an **OpenAI-compatible** endpoint. Defaults are set for **DeepSeek** (`deepseek-chat`). OpenAI works by changing three variables; Anthropic is supported via `pip install langchain-anthropic` and `LLM_PROVIDER=anthropic`.
 
 ## Quick start (local, recommended for the demo)
@@ -98,7 +99,19 @@ cp ai-service/.env.example ai-service/.env   # set LLM_API_KEY
 docker compose up --build                    # UI http://localhost:8080, API http://localhost:3000/api/docs
 ```
 
-The backend container migrates and seeds the database on start (data persists in a named volume).
+The backend container migrates and seeds the database on start (data persists in a named volume). The AI service is reachable only inside the compose network; clients go through the backend.
+
+### Kubernetes (reference)
+
+```bash
+docker build -t clinicpilot/backend:latest -f backend/Dockerfile .
+docker build -t clinicpilot/ai-service:latest ai-service
+docker build -t clinicpilot/frontend:latest frontend
+# push to your registry (or load into kind/minikube), then:
+kubectl create namespace clinicpilot
+kubectl create secret generic clinicpilot-llm -n clinicpilot --from-literal=LLM_API_KEY=...
+kubectl apply -f k8s/clinicpilot.yaml
+```
 
 ## Demo script (about 3 minutes)
 
@@ -116,6 +129,8 @@ Use the quick-prompt buttons on the left or type:
 
 The **Agent trace** panel shows the intent, each graph step with timings, tool calls (and transport), sources and token usage for the last turn. The **Transcript summarizer** tab demonstrates the bonus task.
 
+Dates are clinic-local (New York for Metro Care, Los Angeles for Sunset Wellness). When demoing from another timezone, you can pin the clinic date with `CLINIC_TODAY=YYYY-MM-DD` in both `.env` files so "tomorrow" and "next Monday" are unambiguous.
+
 To show **MCP**: set `TOOL_TRANSPORT=mcp` in `ai-service/.env`, restart the AI service and book again; tool tags change to `via mcp`.
 
 Reset the data between demos (keeps the seed rows, removes chatbot bookings):
@@ -130,7 +145,7 @@ Backend (`http://localhost:3000/api`, full schema at `/api/docs`):
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/chat` | `{ message, sessionId?, patientId? = "P001" }` → reply, intent, booking draft, tool calls, trace |
+| `POST` | `/chat` | `{ message, sessionId?, patientId? = "P001" }` (snake_case `session_id` / `patient_id` also accepted) → reply, intent, booking draft, tool calls, trace |
 | `GET` | `/bookings?patientId=&when=upcoming\|past\|all` | Bookings enriched with doctor, treatment and clinic |
 | `POST` | `/bookings` | Create a booking (validated; optional `idempotencyKey`) |
 | `POST` | `/bookings/validate` | Dry-run the same rules without saving |
@@ -149,7 +164,7 @@ make test        # backend unit + API tests, AI-service offline tests (no API ke
 make eval        # 24 scripted conversations against the running stack with the real LLM
 ```
 
-Latest evaluation: 24/24 cases, 36/36 intents, 89/89 checks, p50 latency 1.2 s. See `evals/results/latest.md`.
+Latest evaluation: 24/24 cases, 36/36 intents, 89/89 checks, p50 latency 1.2-1.3 s (two runs). See `evals/results/latest.md`. The eval expects the seed data, so `make eval` resets demo bookings before and after.
 
 ## Troubleshooting
 

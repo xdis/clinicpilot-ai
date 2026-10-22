@@ -1,13 +1,18 @@
 """Runtime configuration, read from environment variables or ai-service/.env."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+SERVICE_DIR = Path(__file__).resolve().parent.parent
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # ai-service/.env is found regardless of the directory uvicorn is started from
+    model_config = SettingsConfigDict(env_file=SERVICE_DIR / ".env", env_file_encoding="utf-8", extra="ignore")
 
     # LLM: any OpenAI-compatible endpoint (DeepSeek, OpenAI, Azure OpenAI via compatible URL) or Anthropic.
     llm_provider: Literal["deepseek", "openai", "anthropic", "fake"] = "deepseek"
@@ -23,7 +28,7 @@ class Settings(BaseSettings):
     tool_transport: Literal["rest", "mcp"] = "rest"
 
     # Conversation state (LangGraph checkpointer)
-    checkpoint_db: str = "data/checkpoints.sqlite3"
+    checkpoint_db: str = str(SERVICE_DIR / "data" / "checkpoints.sqlite3")
     history_turns: int = 8
 
     # Pin "today" for demos and tests (YYYY-MM-DD). Empty = real date in the clinic timezone.

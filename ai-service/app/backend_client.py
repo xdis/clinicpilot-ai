@@ -1,8 +1,12 @@
 """HTTP client for the NestJS backend. Used directly (REST transport) and by the MCP server."""
 
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
+
+# Set per request by the API layer; forwarded to the backend so both services log the same id.
+current_request_id: ContextVar[str | None] = ContextVar("current_request_id", default=None)
 
 
 class ToolError(Exception):
@@ -25,6 +29,9 @@ class BackendClient:
         self._http = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout, headers=headers)
 
     def _request(self, method: str, path: str, **kwargs: Any) -> Any:
+        rid = current_request_id.get()
+        if rid:
+            kwargs["headers"] = {**kwargs.get("headers", {}), "x-request-id": rid}
         try:
             res = self._http.request(method, path, **kwargs)
         except httpx.HTTPError as exc:

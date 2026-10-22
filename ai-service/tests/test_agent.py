@@ -91,3 +91,17 @@ def test_sessions_are_isolated(agent):
     agent.chat("a", "P001", "Book an appointment with Dr Wilson")
     r = agent.chat("b", "P001", "hello")
     assert r["booking_draft"] is None
+
+
+def test_correction_after_summary_is_an_update_not_a_bare_decline(agent, backend):
+    agent.chat("s8", "P001", "Book a joint and pain consultation with Dr Wilson on 2026-10-27 at 9am")
+    r = agent.chat("s8", "P001", "no, make it 11am")
+    assert r["intent"] == "booking_update"
+    assert r["booking_draft"]["time"] == "11:00" and r["awaiting_confirmation"]
+    assert backend.created == []
+
+
+def test_treatment_resolution_from_a_single_word(backend):
+    from app.knowledge import KnowledgeBase
+
+    assert KnowledgeBase(backend.get_catalog()).resolve_treatment("checkup")["id"] == "T001"

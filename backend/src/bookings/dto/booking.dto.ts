@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsISO8601, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 export class CreateBookingDto {
   @ApiProperty({ example: 'P001' })
@@ -16,6 +16,7 @@ export class CreateBookingDto {
 
   @ApiProperty({ example: '2026-10-26', description: 'Clinic-local date, YYYY-MM-DD' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'bookingDate must be YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'bookingDate must be a real calendar date' })
   bookingDate!: string;
 
   @ApiProperty({ example: '10:00', description: 'Clinic-local time, HH:MM or HH:MM:SS (24h)' })

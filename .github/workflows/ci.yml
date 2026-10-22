@@ -21,12 +21,14 @@ jobs:
   ai-service:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: ai-service } }
+    strategy:
+      matrix: { python: ["3.11", "3.12"] }
     env:
       LLM_PROVIDER: fake   # offline, deterministic: no API key or cost in CI
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: "3.12", cache: pip, cache-dependency-path: ai-service/requirements*.txt }
+        with: { python-version: "${{ matrix.python }}", cache: pip, cache-dependency-path: ai-service/requirements*.txt }
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest
 
@@ -40,3 +42,10 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cp ai-service/.env.example ai-service/.env
+      - run: docker compose build

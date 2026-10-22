@@ -122,8 +122,11 @@ class LangChainLLM:
         if not (s.langfuse_public_key and s.langfuse_secret_key):
             return []
         try:
+            from langfuse import Langfuse
             from langfuse.langchain import CallbackHandler
 
+            Langfuse(public_key=s.langfuse_public_key, secret_key=s.langfuse_secret_key, host=s.langfuse_host or None)
+            log.info("Langfuse tracing enabled (%s)", s.langfuse_host or "default host")
             return [CallbackHandler(public_key=s.langfuse_public_key)]
         except Exception as exc:  # noqa: BLE001 - tracing must never break the app
             log.warning("Langfuse disabled: %s", exc)

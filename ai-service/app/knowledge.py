@@ -150,7 +150,8 @@ class KnowledgeBase:
         best, best_score = None, 0.0
         for t in self.treatments.values():
             name_t = set(_tokens(t["name"] + " " + t["category"]))
-            score = len(ref_t & name_t) / max(1, len(name_t))
+            overlap = len(ref_t & name_t)
+            score = max(overlap / max(1, len(name_t)), overlap / max(1, len(ref_t)) * 0.5)
             if score > best_score:
                 best, best_score = t, score
         return best if best_score >= 0.34 else None

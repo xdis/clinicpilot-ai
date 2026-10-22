@@ -124,7 +124,14 @@ class _McpWorker:
         fut: Future = Future()
         assert self._queue is not None
         self._loop.call_soon_threadsafe(self._queue.put_nowait, (name, args, fut))
-        result = fut.result(timeout=30)
+        try:
+            result = fut.result(timeout=30)
+        except TimeoutError as exc:  # concurrent.futures.TimeoutError is TimeoutError on 3.11+
+            raise ToolError("MCP_TIMEOUT", f"MCP tool {name} did not answer within 30s") from exc
+        except ToolError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - transport failure (e.g. server process died)
+            raise ToolError("MCP_TRANSPORT_ERROR", f"MCP call {name} failed: {exc}") from exc
         payload: Any = result.structured_content
         if payload is None and result.content:
             text = getattr(result.content[0], "text", "")

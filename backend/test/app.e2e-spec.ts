@@ -101,6 +101,21 @@ describe('ClinicPilot backend (e2e)', () => {
     expect(res.body.error.message).toBe('Request validation failed.');
   });
 
+  it('rejects an impossible calendar date', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/bookings')
+      .send({ patientId: 'P001', doctorId: 'D103', treatmentId: 'T003', bookingDate: '2026-02-30', bookingTime: '10:00' })
+      .expect(400);
+    expect(JSON.stringify(res.body.error.details)).toContain('real calendar date');
+  });
+
+  it('accepts the brief\'s snake_case patient_id on /api/chat (gateway validation)', async () => {
+    process.env.AI_SERVICE_URL = 'http://127.0.0.1:9'; // nothing listens: proves validation passed and the call was forwarded
+    const res = await request(app.getHttpServer()).post('/api/chat').send({ message: 'hi', patient_id: 'P001' });
+    expect(res.status).toBe(503);
+    expect(res.body.error.code).toBe('AI_SERVICE_UNAVAILABLE');
+  });
+
   it('returns 404 for an unknown doctor', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/bookings')

@@ -1,4 +1,4 @@
-# ClinicPilot AI service (Python 3.10+)
+# ClinicPilot AI service (Python 3.11+)
 fastapi==0.159.1
 httpx==0.28.1
 langchain-core==1.6.13

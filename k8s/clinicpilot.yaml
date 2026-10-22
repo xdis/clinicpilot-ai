@@ -1,6 +1,7 @@
 # Reference Kubernetes deployment (single namespace).
 # SQLite on a PersistentVolume means one backend replica; switch Prisma to PostgreSQL to scale out.
-# Build and push the three images first (see README), then:
+# Build the three images first (see README "Kubernetes"), then:
+#   kubectl create namespace clinicpilot
 #   kubectl create secret generic clinicpilot-llm -n clinicpilot --from-literal=LLM_API_KEY=...
 #   kubectl apply -f k8s/clinicpilot.yaml
 apiVersion: v1
@@ -38,6 +39,7 @@ spec:
       containers:
         - name: backend
           image: clinicpilot/backend:latest
+          imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 3000 }]
           envFrom: [{ configMapRef: { name: clinicpilot-config } }]
           volumeMounts: [{ name: data, mountPath: /data }]
@@ -62,6 +64,7 @@ spec:
       containers:
         - name: ai-service
           image: clinicpilot/ai-service:latest
+          imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 8000 }]
           envFrom:
             - configMapRef: { name: clinicpilot-config }
@@ -86,6 +89,7 @@ spec:
       containers:
         - name: frontend
           image: clinicpilot/frontend:latest
+          imagePullPolicy: IfNotPresent
           ports: [{ containerPort: 80 }]
 ---
 apiVersion: v1

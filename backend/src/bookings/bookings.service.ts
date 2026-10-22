@@ -6,6 +6,8 @@ import {
   checkWithinOpeningHours,
   clinicTimezone,
   isSpecialtyAllowed,
+  minutesOf,
+  nowMinutesIn,
   todayIn,
 } from '../domain/clinic-rules';
 import { CreateBookingDto, ListBookingsQuery } from './dto/booking.dto';
@@ -112,8 +114,13 @@ export class BookingsService {
         `${treatment.name} is provided by ${allowed.join(' or ') || 'no listed specialty'}, but ${doctor.fullName} is ${doctor.specialty}.`,
       );
     }
-    const today = todayIn(clinicTimezone(doctor.clinic.address));
+    const tz = clinicTimezone(doctor.clinic.address);
+    const today = todayIn(tz);
     if (dto.bookingDate < today) problems.push(`${dto.bookingDate} is in the past (today is ${today} at the clinic).`);
+    const nowMin = nowMinutesIn(tz);
+    if (dto.bookingDate === today && nowMin !== null && minutesOf(normalizeTime(dto.bookingTime)) <= nowMin) {
+      problems.push(`${dto.bookingTime.slice(0, 5)} today has already passed at the clinic.`);
+    }
     const slot = checkWithinOpeningHours(
       doctor.clinic.operatingHours,
       dto.bookingDate,
@@ -143,7 +150,26 @@ export class BookingsService {
     }
     const time = normalizeTime(dto.bookingTime);
 
-    const created = await this.prisma.$transaction(async (tx) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const created = await this.insert(dto, time);
+        return { booking: toView(created), idempotentReplay: false };
+      } catch (err) {
+        if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002' || attempt >= 3) throw err;
+        if (dto.idempotencyKey) {
+          const existing = await this.prisma.patientBooking.findUnique({
+            where: { idempotencyKey: dto.idempotencyKey },
+            include: bookingInclude,
+          });
+          if (existing) return { booking: toView(existing), idempotentReplay: true };
+        }
+        // otherwise a concurrent insert took the same booking id: retry with the next one
+      }
+    }
+  }
+
+  private insert(dto: CreateBookingDto, time: string) {
+    return this.prisma.$transaction(async (tx) => {
       const ids = await tx.patientBooking.findMany({ select: { id: true } });
       const next = Math.max(1000, ...ids.map((r) => Number(r.id.replace(/\D/g, '')) || 0)) + 1;
       return tx.patientBooking.create({
@@ -162,6 +188,5 @@ export class BookingsService {
         include: bookingInclude,
       });
     });
-    return { booking: toView(created), idempotentReplay: false };
   }
 }

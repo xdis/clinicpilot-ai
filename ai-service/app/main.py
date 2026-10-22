@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 import threading
 import time
@@ -16,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Request
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from .agent import ClinicAgent
-from .backend_client import BackendClient, ToolError
+from .backend_client import BackendClient, ToolError, current_request_id
 from .config import Settings, get_settings
 from .knowledge import KnowledgeBase
 from .llm import build_llm
@@ -74,14 +75,16 @@ def health(request: Request) -> dict:
 @app.post("/v1/chat", response_model=ChatResponse)
 def chat(body: ChatRequest, request: Request) -> ChatResponse:
     agent: ClinicAgent = request.app.state.agent
+    rid = request.headers.get("x-request-id", "")
+    current_request_id.set(rid if re.fullmatch(r"[A-Za-z0-9-]{1,64}", rid) else None)
     with request.app.state.lock:
         try:
             result = agent.chat(body.session_id, body.patient_id, body.message)
         except ToolError as exc:
             log.error("tool failure: %s %s", exc.code, exc.message)
             raise HTTPException(status_code=502, detail={"code": exc.code, "message": exc.message}) from exc
-    log.info("chat session=%s intent=%s tools=%s latency=%sms", body.session_id, result["intent"],
-             [c["name"] for c in result["tool_calls"]], result["latency_ms"])
+    log.info("chat request_id=%s session=%s intent=%s tools=%s latency=%sms", rid or "-", body.session_id,
+             result["intent"], [c["name"] for c in result["tool_calls"]], result["latency_ms"])
     return ChatResponse(**result)
 
 
@@ -96,13 +99,15 @@ def reset(session_id: str, request: Request, patient_id: str = "P001") -> dict:
 def summarize(body: SummarizeRequest, request: Request) -> dict:
     agent: ClinicAgent = request.app.state.agent
     started = time.perf_counter()
-    agent.llm.usage = {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0}
-    try:
-        summary: MedicalSummary = agent.llm.summarize(body.transcript)
-    except Exception as exc:  # noqa: BLE001 - one retry, then a clean error
-        log.warning("summarize retry after: %s", exc)
+    with request.app.state.lock:  # shares the LLM usage counters with chat turns
+        agent.llm.usage = {"input_tokens": 0, "output_tokens": 0, "llm_calls": 0}
         try:
-            summary = agent.llm.summarize(body.transcript)
-        except Exception as exc2:  # noqa: BLE001
-            raise HTTPException(status_code=502, detail={"code": "SUMMARY_FAILED", "message": str(exc2)}) from exc2
-    return {"summary": summary.model_dump(), "usage": dict(agent.llm.usage), "latency_ms": int((time.perf_counter() - started) * 1000)}
+            summary: MedicalSummary = agent.llm.summarize(body.transcript)
+        except Exception as exc:  # noqa: BLE001 - one retry, then a clean error
+            log.warning("summarize retry after: %s", exc)
+            try:
+                summary = agent.llm.summarize(body.transcript)
+            except Exception as exc2:  # noqa: BLE001
+                raise HTTPException(status_code=502, detail={"code": "SUMMARY_FAILED", "message": str(exc2)}) from exc2
+        usage = dict(agent.llm.usage)
+    return {"summary": summary.model_dump(), "usage": usage, "latency_ms": int((time.perf_counter() - started) * 1000)}

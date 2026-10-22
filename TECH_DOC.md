@@ -38,7 +38,7 @@ flowchart LR
 | Service | Stack | Responsibility |
 |---|---|---|
 | `backend/` | NestJS 11, Prisma 6, SQLite, class-validator, Swagger | Owns all data and every business rule. Seeds from CSV. Single gateway for the UI (`/api/chat` forwards to the AI service). |
-| `ai-service/` | Python 3.10+, FastAPI, LangGraph, LangChain, MCP SDK | Conversation state machine, intent routing, retrieval, slot filling, tool calls. **Never touches the database directly.** |
+| `ai-service/` | Python 3.11+, FastAPI, LangGraph, LangChain, MCP SDK | Conversation state machine, intent routing, retrieval, slot filling, tool calls. **Never touches the database directly.** |
 | `frontend/` | React 19, Vite, TypeScript, plain CSS | Demo workbench: chat, live bookings table, agent trace, transcript summarizer. |
 
 **Why three services.** It matches the suggested structure and gives a clean separation of concerns: the AI service can be replaced or scaled without touching data integrity, and every write goes through one validated API. The UI talks only to the backend, so the AI service is not exposed publicly.
@@ -63,7 +63,7 @@ Intents: `clinic_info`, `recommendation`, `booking_query`, `new_booking`, `booki
 Combining classification and slot extraction in one call keeps latency low (median turn ~1.2 s end to end) and lets the model use the same context for both. The prompt includes the live doctor and treatment lists (ids, names, specialties), the current booking draft and whether a summary is awaiting confirmation, so the model can tell "10am please" (a `booking_update`) from a new request.
 
 Code then post-processes the result:
-- **Rule fast path:** while a summary is awaiting confirmation, a bare "yes" / "no" is classified by regex without calling the model (0 tokens, ~10 ms).
+- **Rule fast path:** while a summary is awaiting confirmation, a bare "yes" / "no" is classified by regex without calling the model (0 tokens, ~10 ms). Anything longer ("no, make it 11am") goes to the model so the correction is kept.
 - **Consistency rules:** `confirm_booking` without a pending summary is downgraded to `new_booking`/`booking_update`; unknown specialties are normalised or dropped; malformed dates/times are discarded.
 - **Graceful degradation:** if the model call fails, the turn falls back to a safe intent and the trace records `analyze_failed` instead of crashing.
 
@@ -175,7 +175,7 @@ erDiagram
 - Tables and columns keep the CSV names (`@@map`/`@map`), so the database reads like the source data while the TypeScript model is camelCase.
 - `patient_bookings` adds `source` (shows which rows the chatbot created), `idempotency_key` (unique, prevents duplicates) and `created_at`, plus an index on `(patient_id, booking_date)`.
 - The seed (`prisma/seed.ts`) upserts every CSV row by primary key: re-running never duplicates rows and never deletes chatbot bookings. `npm run db:demo-reset` removes only non-seed bookings to restart a demo.
-- Booking ids continue the existing sequence (`B1005`, `B1006`, …) inside a transaction.
+- Booking ids continue the existing sequence (`B1005`, `B1006`, …) inside a transaction; if a concurrent insert takes the same id the create is retried, and a concurrent request with the same idempotency key is answered as a replay.
 - SQLite keeps local setup to zero services; the Prisma schema moves to PostgreSQL/MySQL by changing the provider.
 
 ### Business rules (backend, `src/domain/clinic-rules.ts`)
@@ -184,7 +184,7 @@ erDiagram
 |---|---|
 | Entities exist | patient, doctor, treatment (404 with a code otherwise) |
 | Specialty compatibility | treatment category → allowed specialties (see assumptions) |
-| Not in the past | compared with "today" in the **clinic's timezone** (inferred from the address: NY → America/New_York, CA → America/Los_Angeles) |
+| Not in the past | compared with "today" in the **clinic's timezone** (inferred from the address: NY → America/New_York, CA → America/Los_Angeles); a time earlier than now on the same day is rejected; impossible dates (2026-02-30) fail validation |
 | Inside opening hours | parses strings like `Mon-Fri: 8:00 AM - 6:00 PM, Sat: 9:00 AM - 1:00 PM, Sun: Closed`; the whole appointment (start + duration) must fit |
 | Conflicts | not checked, as allowed by the brief |
 
@@ -196,7 +196,7 @@ Errors use one envelope: `{"error": {"code", "message", "details", "requestId"}}
 |---|---|
 | Emergency guard (rules, before the LLM) | Red-flag phrases (chest pain, can't breathe, throat swelling, anaphylaxis, …) short-circuit to 911 and each clinic's emergency instructions, plus an epinephrine reminder for the peanut allergy. No booking, no LLM call. |
 | Medical scope | No diagnosis, no medication advice; recommendations carry a disclaimer. Allergy questions explain there is no allergist and that a GP can assess and refer. |
-| Prompt injection | Patterns such as "ignore previous instructions" or references to another patient are flagged. The patient id comes from the request, never from the model, so the agent cannot read or book for another patient; the reply says so. |
+| Prompt injection | Patterns such as "ignore previous instructions" or references to another patient are flagged. The patient id is set by the gateway for the session (always P001 in this demo), never by the model, so a message cannot make the agent read or book for another patient; the reply says so. (API-level authorisation is out of scope; see limitations.) |
 | Grounding | Answers use only supplied facts; unsupported citations are removed. |
 | Write safety | Writes only after explicit confirmation; backend re-validates; idempotency key. |
 | Input validation | DTO validation on every endpoint (`whitelist`, `forbidNonWhitelisted`), message length limits, session-id pattern. |
@@ -206,12 +206,12 @@ Errors use one envelope: `{"error": {"code", "message", "details", "requestId"}}
 | Suite | Scope | Result |
 |---|---|---|
 | Backend unit (`npm test`) | opening-hours parser, closed days, appointment overrun, specialty mapping, timezone | 5 passed |
-| Backend API (`npm run test:e2e`) | real Nest app + fresh SQLite: list, profile, create, idempotent replay, rule violations (3 at once), dry-run validation, DTO validation, 404 | 9 passed |
-| AI service (`pytest`, offline) | full agent with a rule-based `FakeLLM` and in-memory backend: routing, slot filling, inference, confirmation gate, closed-day rejection, emergency short-circuit, injection, abandon, session isolation, retrieval, citation guard, **MCP server contract test** (in-process MCP client) | 17 passed |
+| Backend API (`npm run test:e2e`) | real Nest app + fresh SQLite: list, profile, create, idempotent replay, rule violations (3 at once), dry-run validation, DTO validation, impossible date, snake_case `patient_id` on `/api/chat`, 404 | 11 passed |
+| AI service (`pytest`, offline) | full agent with a rule-based `FakeLLM` and in-memory backend: routing, slot filling, inference, confirmation gate, correction after the summary, closed-day rejection, emergency short-circuit, injection, abandon, session isolation, retrieval, entity resolution, citation guard, **MCP server contract test** (in-process MCP client) | 19 passed |
 | Frontend | ESLint + type-checked production build | clean |
 | **Scenario evals** (`make eval`, real LLM) | 24 multi-turn conversations, 36 turns, 89 checks | see below |
 
-CI (`.github/workflows/ci.yml`) runs the backend, AI-service and frontend suites on every push. The AI tests use `LLM_PROVIDER=fake`, so CI needs no API key and is deterministic.
+CI (`.github/workflows/ci.yml`) runs the backend suites, the AI-service suite on Python 3.11 and 3.12, the frontend lint/build and a `docker compose build` on every push. The AI tests use `LLM_PROVIDER=fake`, so CI needs no API key and is deterministic.
 
 ### Scenario evaluation (DeepSeek `deepseek-chat`, 2026-10-22)
 
@@ -242,7 +242,7 @@ Cases cover clinic info (hours, fees, languages, policies, preparation), symptom
 
 - **Single patient:** the user is always P001 (John Doe), injected by the backend gateway; no authentication.
 - **Treatment ↔ specialty mapping** (not present in the CSVs): Preventative Care → General Practice; Pediatrics → Pediatrics; Dermatology → Dermatology; Immunization → General Practice or Pediatrics; Orthopedics → Orthopedics.
-- **Dates and times** are clinic-local; "today" is computed in the clinic timezone (`CLINIC_TODAY` can pin it for demos/tests).
+- **Dates and times** are clinic-local. The backend validates each booking in its own clinic's timezone; the agent resolves relative dates ("next Monday") in `CLINIC_TIMEZONE` (default America/New_York). `CLINIC_TODAY` pins the date for demos and tests.
 - **Cancelling or rescheduling existing bookings** is out of scope; the assistant gives the clinic's phone and cancellation policy.
 - **Data observation:** seeded booking B1004 (Dr. Wilson, 2026-11-15) falls on a Sunday when Metro Care is closed. Seed data is loaded as-is; new bookings are validated.
 

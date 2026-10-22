@@ -93,6 +93,15 @@ export function todayIn(timezone: string, now: Date = new Date()): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(now);
 }
 
+/** Current clinic-local time in minutes, or null when "today" is pinned for tests/demos. */
+export function nowMinutesIn(timezone: string, now: Date = new Date()): number | null {
+  if (process.env.CLINIC_TODAY) return null;
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(now)
+    .reduce<Record<string, string>>((acc, p) => ({ ...acc, [p.type]: p.value }), {});
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
+
 export interface SlotCheck {
   ok: boolean;
   reason?: string;

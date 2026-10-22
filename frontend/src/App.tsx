@@ -61,7 +61,7 @@ export default function App() {
 
   const refreshBookings = useCallback(async () => {
     try {
-      setBookings(await api.bookings())
+      setBookings(await api.bookings(PATIENT_ID))
       setBookingsError(null)
     } catch (e) {
       setBookingsError((e as Error).message)
