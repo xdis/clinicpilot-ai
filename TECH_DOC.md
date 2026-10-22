@@ -221,7 +221,7 @@ CI (`.github/workflows/ci.yml`) runs the backend suites, the AI-service suite on
 | Intent accuracy | 36 / 36 turns (100%) |
 | Checks passed | 89 / 89 (intent, citations, tools, reply content, confirmation state, booking outcome) |
 | Booking outcome accuracy | 13 / 13 (booked exactly when expected, never otherwise) |
-| Latency p50 / p95 | 1.2 s / 2.4 s |
+| Latency p50 / p95 | 1.2-1.3 s / 2.4-2.6 s (three runs) |
 | Tokens per turn (avg) | ~1,750 |
 
 Cases cover clinic info (hours, fees, languages, policies, preparation), symptom recommendations, booking queries, five booking paths (happy path, one-shot, pronoun reference after a recommendation, step-by-step slot filling, change before confirming), closed-day rejection, specialty mismatch, abandon, allergy, emergency, prompt injection, cancel request, out-of-scope and small talk. The latest report is written to `evals/results/latest.md`.

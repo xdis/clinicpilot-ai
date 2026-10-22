@@ -164,7 +164,7 @@ make test        # backend unit + API tests, AI-service offline tests (no API ke
 make eval        # 24 scripted conversations against the running stack with the real LLM
 ```
 
-Latest evaluation: 24/24 cases, 36/36 intents, 89/89 checks, p50 latency 1.2-1.3 s (two runs). See `evals/results/latest.md`. The eval expects the seed data, so `make eval` resets demo bookings before and after.
+Latest evaluation: 24/24 cases, 36/36 intents, 89/89 checks, p50 latency 1.2-1.3 s (three runs). See `evals/results/latest.md`. The eval expects the seed data, so `make eval` resets demo bookings before and after.
 
 ## Troubleshooting
 
