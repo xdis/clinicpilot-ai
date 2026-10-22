@@ -27,5 +27,6 @@
   {"id": "unknown-doctor", "turns": [{"user": "Book me with Dr. House for a checkup next Monday at 10am.", "intent": ["new_booking"], "reply_has": ["couldn't find a doctor"], "awaiting": false, "booked": false}]},
   {"id": "invalid-date", "turns": [{"user": "I'd like a checkup with Dr Jenkins on February 30 at 10am.", "intent": ["new_booking"], "reply_has": ["doesn't exist"], "awaiting": false, "booked": false}]},
   {"id": "multi-part-with-appointments", "turns": [{"user": "My knee hurts after running and I also have an itchy rash. Also, what appointments do I already have?", "intent": ["recommendation", "booking_query"], "tools": ["list_bookings"], "reply_has": ["Your upcoming appointments", "Wilson"]}]},
-  {"id": "cantonese-child-fever", "turns": [{"user": "我個仔發燒咗兩日，應該睇邊個醫生？", "intent": ["recommendation"], "cites": ["D102"]}]}
+  {"id": "cantonese-child-fever", "turns": [{"user": "我個仔發燒咗兩日，應該睇邊個醫生？", "intent": ["recommendation"], "cites": ["D102"]}]},
+  {"id": "unavailable-specialty", "turns": [{"user": "Do you have a cardiologist? I want to book one for next Monday at 10.", "reply_has": ["cardiologist", "General Practice", "Jenkins"], "awaiting": false, "booked": false}]}
 ]

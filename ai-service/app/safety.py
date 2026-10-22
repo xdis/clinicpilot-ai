@@ -54,4 +54,5 @@ def check_citations(text: str, allowed_ids: set[str]) -> tuple[str, list[str], l
         return ""
 
     clean = _CITATION.sub(_sub, text)
+    clean = re.sub(r"[ \t]+([,.;:)])", r"\1", clean)  # no stray space left where a citation was removed
     return re.sub(r"[ \t]{2,}", " ", clean).strip(), valid, removed

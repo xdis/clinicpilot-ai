@@ -198,3 +198,9 @@ def test_long_message_asking_for_existing_appointments_lists_upcoming(agent):
            "Can you remind me what appointments I already have?")
     r = agent.chat("s22", "P001", msg)
     assert "Your upcoming appointments:" in r["reply"] and "Your past visits" not in r["reply"]
+
+
+def test_unavailable_specialty_is_answered_before_booking(agent, backend):
+    r = agent.chat("s23", "P001", "Do you have a cardiologist? I want to book one for next Monday at 10")
+    assert "We don't have a cardiologist" in r["reply"] and "General Practice" in r["reply"]
+    assert not r["awaiting_confirmation"] and r["booking_draft"] is None
