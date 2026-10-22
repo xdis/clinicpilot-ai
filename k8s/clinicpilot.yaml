@@ -1,0 +1,94 @@
+# Reference Kubernetes deployment (single namespace).
+# SQLite on a PersistentVolume means one backend replica; switch Prisma to PostgreSQL to scale out.
+# Build and push the three images first (see README), then:
+#   kubectl create secret generic clinicpilot-llm -n clinicpilot --from-literal=LLM_API_KEY=...
+#   kubectl apply -f k8s/clinicpilot.yaml
+apiVersion: v1
+kind: Namespace
+metadata: { name: clinicpilot }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata: { name: clinicpilot-config, namespace: clinicpilot }
+data:
+  LLM_PROVIDER: deepseek
+  LLM_MODEL: deepseek-chat
+  LLM_BASE_URL: https://api.deepseek.com
+  TOOL_TRANSPORT: rest
+  BACKEND_URL: http://backend:3000/api
+  AI_SERVICE_URL: http://ai-service:8000
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: backend-data, namespace: clinicpilot }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: backend, namespace: clinicpilot }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector: { matchLabels: { app: backend } }
+  template:
+    metadata: { labels: { app: backend } }
+    spec:
+      containers:
+        - name: backend
+          image: clinicpilot/backend:latest
+          ports: [{ containerPort: 3000 }]
+          envFrom: [{ configMapRef: { name: clinicpilot-config } }]
+          volumeMounts: [{ name: data, mountPath: /data }]
+          readinessProbe: { httpGet: { path: /api/health, port: 3000 }, initialDelaySeconds: 10 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: backend-data } }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: backend, namespace: clinicpilot }
+spec: { selector: { app: backend }, ports: [{ port: 3000, targetPort: 3000 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: ai-service, namespace: clinicpilot }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ai-service } }
+  template:
+    metadata: { labels: { app: ai-service } }
+    spec:
+      containers:
+        - name: ai-service
+          image: clinicpilot/ai-service:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: clinicpilot-config }
+            - secretRef: { name: clinicpilot-llm }
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 5 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: ai-service, namespace: clinicpilot }
+spec: { selector: { app: ai-service }, ports: [{ port: 8000, targetPort: 8000 }] }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend, namespace: clinicpilot }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: clinicpilot/frontend:latest
+          ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: clinicpilot }
+spec: { type: LoadBalancer, selector: { app: frontend }, ports: [{ port: 80, targetPort: 80 }] }
