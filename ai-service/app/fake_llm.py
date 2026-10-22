@@ -55,7 +55,9 @@ class FakeLLM:
         treatment = None
         for line in context["treatment_lines"]:
             tid, rest = line[2:].split(": ", 1)
-            if tid.lower() in m or rest.split(" (")[0].lower() in m:
+            name = rest.split(" (")[0].lower()
+            short = " ".join(name.split()[:2])  # "flu shot", "dermatology consultation", "general health"
+            if tid.lower() in m or name in m or short in m:
                 treatment = tid
 
         date = None
@@ -87,7 +89,7 @@ class FakeLLM:
             intent = "cancel_existing"
         elif re.search(r"\b(never ?mind|forget it|stop booking)\b", m):
             intent = "abandon_booking"
-        elif re.search(r"\b(book|appointment|schedule)\b", m):
+        elif re.search(r"\b(book|appointment|schedule)\b|\b(i want|i'd like|i would like) an? ", m):
             intent = "new_booking" if not draft else "booking_update"
         elif draft and (date or time or doctor or treatment):
             intent = "booking_update"

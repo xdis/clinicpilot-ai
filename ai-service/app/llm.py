@@ -65,6 +65,8 @@ Rules:
 - date: return YYYY-MM-DD or null. Use the calendar below to resolve relative dates ("tomorrow", "next Monday").
   Absolute dates ("Nov 20", "December 3", "the 28th") are valid even beyond the calendar: resolve them to the next
   occurrence from today (this year, or next year if already passed). Availability is checked later, not by you.
+  Past relative dates ("last Monday", "yesterday") are resolved too (e.g. last Monday -> the previous Monday);
+  the system will tell the patient it is in the past.
   Only if the date cannot exist on any calendar (e.g. February 30) set date to null and explain in date_problem.
 - time: 24h HH:MM ("2pm" -> 14:00, "10 in the morning" -> 10:00) or null.
 - Only fill fields the patient actually stated or clearly referenced. Never guess a date or time.

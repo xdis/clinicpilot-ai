@@ -42,6 +42,11 @@ log = logging.getLogger(__name__)
 
 BOOKING_INTENTS = {"new_booking", "booking_update", "confirm_booking", "decline_booking", "abandon_booking"}
 _YES = re.compile(r"^\s*(yes|yep|yeah|y|sure|ok(ay)?|confirm(ed)?|correct|go ahead|book it|please do|sounds good)\b[\s.!]*$", re.I)
+_AFFIRM = re.compile(
+    r"\b(yes|yep|yeah|ya|yup|sure|ok(ay)?|confirm(ed)?|correct|go ahead|book it|please do|sounds good|do it|that works|perfect)\b"
+    r"|(确认|確認|好的|好|是的|对|對|係|可以|冇問題|没问题)",
+    re.I,
+)
 _NO = re.compile(r"^\s*(no|nope|no thanks|not quite)[\s.!]*$", re.I)
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _FAMILY = "wife|husband|son|daughter|child|children|kid|kids|baby|mother|mom|mum|father|dad|parent|partner|brother|sister|friend"
@@ -321,8 +326,8 @@ class ClinicAgent:
             return {"analysis": a.model_dump(), "flags": [*s.get("flags", []), "analyze_failed"], "_detail": f"fallback ({exc.__class__.__name__})"}
         if a.intent not in INTENTS:
             a.intent = "out_of_scope"
-        # A confirmation only makes sense if a summary is pending.
-        if a.intent == "confirm_booking" and not s.get("awaiting_confirmation"):
+        # A confirmation only makes sense if a summary is pending and the patient actually said yes.
+        if a.intent == "confirm_booking" and (not s.get("awaiting_confirmation") or not _AFFIRM.search(msg)):
             a.intent = "booking_update" if draft else "new_booking"
         a.specialty = kb.normalize_specialty(a.specialty)
         remember: dict[str, Any] = {}
@@ -341,6 +346,11 @@ class ClinicAgent:
         cards = self.kb.retrieve(query, specialty=a.get("specialty"), k=k)
         facts = [f"[{c.id}] {c.text}" for c in cards]
         extra: dict[str, Any] = {}
+        for spec in self.kb.specialties_in(s["user_message"]):  # e.g. "knee pain ... and a rash"
+            for c in self.kb.retrieve(s["user_message"], specialty=spec, k=2):
+                if c.id not in {x.id for x in cards}:
+                    cards.append(c)
+                    facts.append(f"[{c.id}] {c.text}")
         if _MY_APPOINTMENTS.search(s["user_message"]):  # multi-part message that also asks about own bookings
             extra = self.lookup_bookings(s)
             facts += extra["facts"]
@@ -375,11 +385,13 @@ class ClinicAgent:
             if card:
                 facts.append(f"[{card.id}] {card.text}")
         a = s.get("analysis") or {}
-        if a.get("specialty") and a.get("intent") == "booking_query":  # e.g. "my knee hurts... what do I have booked?"
-            for c in self.kb.retrieve(s["user_message"], specialty=a["specialty"], k=4):
-                if c.id not in ids:
-                    ids.append(c.id)
-                    facts.append(f"[{c.id}] {c.text}")
+        if a.get("intent") == "booking_query":  # e.g. "my knee hurts... what do I have booked?"
+            specs = set(self.kb.specialties_in(s["user_message"])) | ({a["specialty"]} if a.get("specialty") else set())
+            for spec in specs:
+                for c in self.kb.retrieve(s["user_message"], specialty=spec, k=3):
+                    if c.id not in ids:
+                        ids.append(c.id)
+                        facts.append(f"[{c.id}] {c.text}")
         # The complete list is rendered from data (never summarised by the model, so nothing is dropped).
         lines = []
         for b in upcoming:
@@ -390,7 +402,8 @@ class ClinicAgent:
                 line += f" - note: the clinic is normally closed on {_DAYS[date.fromisoformat(b['bookingDate']).weekday()]}days; please double-check with the front desk"
             lines.append(line)
         appendix = ("Your upcoming appointments:\n" + "\n".join(lines)) if lines else "You have no upcoming appointments."
-        if re.search(r"\b(past|previous|last|history|before|visited)\b", s["user_message"], re.I) and not re.search(r"\b(next|upcoming)\b", s["user_message"], re.I):
+        if (re.search(r"\b(past|previous|earlier) (visits?|appointments?)\b|\b(visit|medical) history\b|\b(have i|did i) (visited|seen|been)\b", s["user_message"], re.I)
+                and not re.search(r"\b(next|upcoming|already have|do i have)\b", s["user_message"], re.I)):
             hist = s["profile"].get("treatmentHistory", [])
             past_lines = [f"- {_fmt_date(b['bookingDate'])}: {b['treatmentName']} with {b['doctorName']} ({b['bookingId']}, {b['status']})" for b in past]
             past_lines += [f"- {_fmt_date(h['visitDate'])}: visit with {h['doctorName']} - {h['diagnosis']}" for h in hist]
@@ -473,7 +486,7 @@ class ClinicAgent:
                 "if needed. If you ever have swelling of the throat or trouble breathing, call 911 immediately."
             )
         before = {k: draft.get(k) for k in ("date", "time")}
-        unknown_doctor = False
+        unknown_doctor = False  # also blocks auto-filling a doctor the patient did not choose
         # --- merge newly extracted slots (code resolves names to real ids) ---
         if a.get("doctor"):
             doc = kb.resolve_doctor(a["doctor"])
@@ -495,7 +508,7 @@ class ClinicAgent:
             except ValueError:
                 notes.append(f"{a['date']} isn't a valid calendar date.")
         elif a.get("date_problem"):
-            notes.append(f"I couldn't use that date: {a['date_problem'].rstrip('.')}.")
+            notes.append("The date you mentioned doesn't exist on the calendar.")
         if a.get("time"):
             m = _TIME.match(a["time"])
             if m:
@@ -516,6 +529,7 @@ class ClinicAgent:
             if a.get("treatment"):
                 draft.pop("doctor_id", None)
                 doctor = None
+                unknown_doctor = bool(a.get("doctor"))  # they named a doctor: ask which one, don't substitute
             else:
                 draft.pop("treatment_id", None)
                 treatment = None
@@ -529,6 +543,12 @@ class ClinicAgent:
             if len(options) == 1:
                 draft["doctor_id"] = options[0]["id"]
                 doctor = options[0]
+        if (doctor and doctor["specialty"] == "Pediatrics" and self._is_adult(s) and a.get("doctor")
+                and not (treatment and treatment["category"] == "Pediatrics")):
+            notes.append(f"{doctor['fullName']} is a pediatrician and sees children only.")
+            draft.pop("doctor_id", None)
+            doctor = None
+            unknown_doctor = True  # ask which adult doctor rather than picking one
         pediatric = (doctor and doctor["specialty"] == "Pediatrics") or (treatment and treatment["category"] == "Pediatrics")
         if pediatric and self._is_adult(s) and (a.get("doctor") or a.get("treatment")):
             phones = "; ".join(f"{c['name']}: {c['phone']}" for c in kb.clinics.values())

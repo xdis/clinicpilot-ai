@@ -19,6 +19,13 @@ from typing import Any
 from rank_bm25 import BM25Okapi
 
 RRF_K = 60
+# Lexical safety net for multi-part messages; the LLM still supplies the primary specialty.
+SYMPTOM_KEYWORDS = {
+    "Dermatology": ("rash", "itch", "eczema", "acne", "skin", "mole"),
+    "Orthopedics": ("knee", "joint", "back pain", "sprain", "shoulder", "sports injur", "ankle"),
+    "Pediatrics": ("my son", "my daughter", "my child", "my kid", "baby", "toddler"),
+    "General Practice": ("checkup", "check-up", "flu", "fever", "cough", "sore throat", "allerg"),
+}
 _TOKEN = re.compile(r"[a-z0-9]+")
 _STOP = {"the", "a", "an", "and", "or", "of", "to", "for", "in", "on", "at", "is", "are", "with", "my", "i", "me", "do", "you", "what", "can", "please", "dr"}
 
@@ -119,6 +126,10 @@ class KnowledgeBase:
                 fused[idx] = fused.get(idx, 0.0) + 1.0 / (RRF_K + rank + 1)
         ranked = sorted(fused, key=lambda i: -fused[i])[:k]
         return [self.cards[i] for i in ranked]
+
+    def specialties_in(self, text: str) -> list[str]:
+        t = text.lower()
+        return [s for s, words in SYMPTOM_KEYWORDS.items() if s in self.specialties and any(w in t for w in words)]
 
     def card(self, card_id: str) -> Card | None:
         return next((c for c in self.cards if c.id == card_id), None)

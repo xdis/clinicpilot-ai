@@ -10,7 +10,7 @@ An AI clinic assistant MVP. A patient chats in natural language to ask about cli
 - **Hybrid retrieval** (BM25 + LLM-inferred specialty, fused with RRF) with citations checked against retrieved sources.
 - **Deterministic guardrails**: emergency short-circuit, medical scope, prompt-injection handling, clinic opening-hours / specialty / date validation, idempotent booking creation.
 - **Agent trace panel** in the UI: intent, steps, tool calls, sources, tokens and latency for every turn.
-- **Tested and evaluated**: 46 automated tests (offline, run in CI), a 29-scenario evaluation against the real LLM, and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
+- **Tested and evaluated**: 50 automated tests (offline, run in CI), a 29-scenario evaluation against the real LLM, and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
 - Bonus: transcript summarizer, Langfuse tracing, Docker Compose, Kubernetes manifests.
 
 Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.

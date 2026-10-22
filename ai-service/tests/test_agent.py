@@ -172,3 +172,29 @@ def test_reason_from_an_earlier_turn_is_kept_in_the_booking(agent, backend):
     agent.chat("s18", "P001", "Book a dermatology consultation with Dr Rostova on 2026-10-27 at 10am")
     agent.chat("s18", "P001", "yes")
     assert "rash" in backend.created[0]["notes"].lower()
+
+
+def test_a_doctor_name_is_not_a_confirmation(agent, backend):
+    agent.chat("s19", "P001", "Book a checkup with Dr Jenkins on 2026-10-27 at 10am")
+    from app.agent import _AFFIRM
+    assert not _AFFIRM.search("Dr Jenkins please")
+    assert _AFFIRM.search("ok go ahead") and _AFFIRM.search("好的，确认")
+
+
+def test_named_doctor_with_wrong_specialty_is_not_substituted(agent):
+    r = agent.chat("s20", "P001", "Book a flu shot with Dr Wilson on 2026-11-12 at 10am")
+    assert "isn't offered by" in r["reply"]
+    assert not r["awaiting_confirmation"] and "Which doctor" in r["reply"]
+
+
+def test_adult_asking_pediatrician_for_flu_shot_is_redirected_not_refused(agent):
+    r = agent.chat("s21", "P001", "I want a flu shot on 2026-10-29 at 10am with Dr Chang")
+    assert "sees children only" in r["reply"] and "Pediatric appointments are for children" not in r["reply"]
+    assert "Which doctor" in r["reply"]
+
+
+def test_long_message_asking_for_existing_appointments_lists_upcoming(agent):
+    msg = ("My knees ache since I started running again in the spring and I had some dry itchy patches before. "
+           "Can you remind me what appointments I already have?")
+    r = agent.chat("s22", "P001", msg)
+    assert "Your upcoming appointments:" in r["reply"] and "Your past visits" not in r["reply"]

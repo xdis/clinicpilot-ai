@@ -25,7 +25,7 @@
   {"id": "smalltalk", "turns": [{"user": "Hi there!", "intent": ["smalltalk"], "booked": false}]},
   {"id": "book-for-family-refused", "turns": [{"user": "Book a checkup with Dr Jenkins next Thursday at 2pm for my wife.", "intent": ["new_booking"], "reply_has": ["only book appointments for you"], "booked": false}, {"user": "yes", "booked": false}]},
   {"id": "unknown-doctor", "turns": [{"user": "Book me with Dr. House for a checkup next Monday at 10am.", "intent": ["new_booking"], "reply_has": ["couldn't find a doctor"], "awaiting": false, "booked": false}]},
-  {"id": "invalid-date", "turns": [{"user": "I'd like a checkup with Dr Jenkins on February 30 at 10am.", "intent": ["new_booking"], "reply_has": ["February 30"], "awaiting": false, "booked": false}]},
+  {"id": "invalid-date", "turns": [{"user": "I'd like a checkup with Dr Jenkins on February 30 at 10am.", "intent": ["new_booking"], "reply_has": ["doesn't exist"], "awaiting": false, "booked": false}]},
   {"id": "multi-part-with-appointments", "turns": [{"user": "My knee hurts after running and I also have an itchy rash. Also, what appointments do I already have?", "intent": ["recommendation", "booking_query"], "tools": ["list_bookings"], "reply_has": ["Your upcoming appointments", "Wilson"]}]},
   {"id": "cantonese-child-fever", "turns": [{"user": "我個仔發燒咗兩日，應該睇邊個醫生？", "intent": ["recommendation"], "cites": ["D102"]}]}
 ]
