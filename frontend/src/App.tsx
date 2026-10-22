@@ -6,8 +6,9 @@ const PATIENT_ID = 'P001' // single-patient demo, as specified in the assignment
 const QUICK_PROMPTS = [
   'What are the opening hours of Metro Care?',
   "I've had an itchy rash on my arm for a week.",
-  'When is my next appointment?',
   'Book me with her next Monday at 10am.',
+  'yes',
+  'When is my next appointment?',
   'Can I book an appointment for my peanut allergy?',
 ]
 

@@ -121,9 +121,9 @@ Use the quick-prompt buttons on the left or type:
 |---|---|---|
 | 1 | *What are the opening hours of Metro Care?* | Grounded answer with source tag `C001` |
 | 2 | *I've had an itchy rash on my arm for a week.* | Recommends Dr. Elena Rostova (Dermatology) + Dermatology Consultation, preparation, allergy reminder, disclaimer |
-| 3 | *When is my next appointment?* | `list_bookings` tool call; Nov 5 checkup with Dr. Jenkins |
-| 4 | *Book me with her next Monday at 10am.* | Resolves "her", infers the treatment, validates the slot, shows a confirmation summary |
-| 5 | *yes* | `create_booking` tool call; new row highlighted in the **Bookings (live from database)** table with source `chatbot` |
+| 3 | *Book me with her next Monday at 10am.* | Resolves "her" to Dr. Rostova, infers the treatment, validates the slot, shows a confirmation summary |
+| 4 | *yes* | `create_booking` tool call; new row highlighted in the **Bookings (live from database)** table with source `chatbot` |
+| 5 | *When is my next appointment?* | `list_bookings` tool call; the new booking now comes first, then the Nov 5 checkup |
 | 6 | *Can I book an appointment for my peanut allergy?* | Safe guidance (no allergist; GP can assess; 911 for severe reactions) and offers GP options |
 | 7 | *Book a dermatology consultation with Dr Rostova this Saturday at 10am.* | Rejected by clinic rules: Sunset Wellness is closed on weekends |
 
