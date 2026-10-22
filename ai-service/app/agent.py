@@ -47,7 +47,7 @@ _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _TIME = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
 ANSWER_SYSTEM = """You are ClinicPilot, the virtual assistant of a medical clinic group, talking to {patient_name}.
-Answer in clear, friendly English, at most about 120 words. Use short bullet points for lists.
+Answer in clear, friendly English, at most about 120 words, as plain text (no Markdown bold or headings); use "- " bullets for lists.
 Rules:
 - Use ONLY the FACTS. If the answer is not in the FACTS, say you don't have that information and give the clinic phone number.
 - Cite the source id in square brackets right after each fact you use, e.g. "Dr. Elena Rostova [D103]".
@@ -330,6 +330,7 @@ class ClinicAgent:
             log.exception("compose failed")
             text = "Sorry, I couldn't generate an answer just now. Please try again, or call the clinic directly."
         allowed = set(s.get("retrieved", [])) | {profile["patientId"]} | set(self.kb.clinics)
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text).replace("__", "")  # the UI renders plain text
         clean, cited, removed = check_citations(text, allowed)
         detail = f"cited {', '.join(cited) or 'none'}" + (f"; removed unsupported {', '.join(removed)}" if removed else "")
         return self._finish(s, clean, citations=cited, detail=detail)
