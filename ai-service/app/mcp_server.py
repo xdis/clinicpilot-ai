@@ -36,7 +36,7 @@ def get_patient_profile(patient_id: str) -> dict[str, Any]:
 
 
 @server.tool(description="List a patient's bookings. when = 'upcoming' | 'past' | 'all'.")
-def list_bookings(patient_id: str, when: str = "all") -> Any:
+def list_bookings(patient_id: str, when: str = "all") -> list[dict[str, Any]] | dict[str, Any]:
     return _safe(_backend.list_bookings, patient_id, when)
 
 

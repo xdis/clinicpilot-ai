@@ -134,11 +134,12 @@ class _McpWorker:
             raise ToolError("MCP_TRANSPORT_ERROR", f"MCP call {name} failed: {exc}") from exc
         payload: Any = result.structured_content
         if payload is None and result.content:
-            text = getattr(result.content[0], "text", "")
+            texts = [getattr(c, "text", "") for c in result.content]
             try:
-                payload = json.loads(text)
+                parsed = [json.loads(t) for t in texts]
+                payload = parsed[0] if len(parsed) == 1 else parsed  # unstructured lists arrive one item per block
             except ValueError:
-                payload = {"error": {"code": "MCP_TOOL_ERROR", "message": text}}
+                payload = {"error": {"code": "MCP_TOOL_ERROR", "message": " ".join(texts)}}
         if isinstance(payload, dict) and "result" in payload and len(payload) == 1:
             payload = payload["result"]  # MCP wraps non-object return values
         if result.is_error or (isinstance(payload, dict) and "error" in payload and len(payload) == 1):

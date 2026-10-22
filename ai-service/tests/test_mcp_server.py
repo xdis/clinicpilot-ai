@@ -28,6 +28,13 @@ def test_mcp_server_lists_and_calls_tools(backend, monkeypatch):
             return names, catalog, created, invalid
 
     names, catalog, created, invalid = asyncio.run(run())
+
+    async def run_list():
+        async with Client(mcp_server.server) as client:
+            return await client.call_tool("list_bookings", {"patient_id": "P001"})
+
+    listed = asyncio.run(run_list())
+    assert [b["bookingId"] for b in listed.structured_content["result"]] == ["B1005", "B1001", "B1004"]  # sorted by date; B1005 was just created for Oct 27
     assert names == ["create_booking", "get_catalog", "get_patient_profile", "list_bookings", "validate_booking"]
     assert len(catalog.structured_content["doctors"]) == 4
     assert created.structured_content["booking"]["bookingId"] == "B1005"
