@@ -143,3 +143,32 @@ def test_multi_part_message_also_lists_own_appointments(agent):
     r = agent.chat("s14", "P001", "My knee hurts and I have an itchy rash. Also, what do I have booked?")
     assert "Your upcoming appointments:" in r["reply"]
     assert "list_bookings" in [c["name"] for c in r["tool_calls"]]
+
+
+def test_yes_after_a_completed_booking_does_not_reopen_it(agent, backend):
+    agent.chat("s15", "P001", "Book a joint and pain consultation with Dr Wilson on 2026-10-27 at 9am")
+    agent.chat("s15", "P001", "yes")
+    r = agent.chat("s15", "P001", "yes")
+    assert "already confirmed" in r["reply"] and not r["awaiting_confirmation"]
+    assert len(backend.created) == 1
+
+
+def test_child_booking_cannot_bypass_via_follow_up(agent, backend):
+    agent.chat("s16", "P001", "My 4 year old daughter has a fever, who should she see?")
+    r = agent.chat("s16", "P001", "ok book Dr Chang tomorrow at 10am")
+    assert "only book" in r["reply"]
+    agent.chat("s16", "P001", "yes")
+    assert backend.created == []
+
+
+def test_pediatric_booking_for_an_adult_record_is_refused(agent, backend):
+    r = agent.chat("s17", "P001", "Book a pediatric vaccination with Dr Chang on 2026-10-27 at 10am")
+    assert "Pediatric appointments are for children" in r["reply"]
+    assert not r["awaiting_confirmation"]
+
+
+def test_reason_from_an_earlier_turn_is_kept_in_the_booking(agent, backend):
+    agent.chat("s18", "P001", "I have an itchy rash on my arm")
+    agent.chat("s18", "P001", "Book a dermatology consultation with Dr Rostova on 2026-10-27 at 10am")
+    agent.chat("s18", "P001", "yes")
+    assert "rash" in backend.created[0]["notes"].lower()

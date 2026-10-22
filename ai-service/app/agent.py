@@ -46,7 +46,9 @@ _NO = re.compile(r"^\s*(no|nope|no thanks|not quite)[\s.!]*$", re.I)
 _DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _FAMILY = "wife|husband|son|daughter|child|children|kid|kids|baby|mother|mom|mum|father|dad|parent|partner|brother|sister|friend"
 _THIRD_PARTY = re.compile(
-    rf"\b(?:for|book) (?:my |our )?(?P<who1>{_FAMILY})\b|\bmy (?P<who2>{_FAMILY})\b|\bP0*(?P<pid>\d+)\b", re.I
+    rf"\b(?:for|book) (?:my |our )?(?P<who1>{_FAMILY})\b"
+    rf"|\b(?:my|our) (?:\d+[- ]?(?:years?|yrs?|months?)[- ]old |little |baby |young |eldest |youngest )?(?P<who2>{_FAMILY})\b"
+    rf"|\bP0*(?P<pid>\d+)\b", re.I
 )
 _MY_APPOINTMENTS = re.compile(
     r"\b(my|i have|i've got|do i have|have i)\b[^.?!]*\b(appointments?|bookings?|booked|scheduled)\b"
@@ -63,7 +65,10 @@ Rules:
 - Use ONLY the FACTS. If the answer is not in the FACTS, say you don't have that information and give the clinic phone number.
 - Cite the source id in square brackets right after each fact you use, e.g. "Dr. Elena Rostova [D103]".
 - Do not diagnose and do not recommend or change medication. You may suggest which doctor or service fits.
-- Take the patient's allergies ({allergies}) into account when relevant, and remind them to tell the doctor.
+- The allergies on file ({allergies}) belong to {patient_name} only. Never attribute them to anyone else (e.g. a child);
+  mention them only when {patient_name} is the person being treated.
+- You can only book appointments for {patient_name}. If the patient asks about someone else (a child, a partner),
+  give general information but say that person must be booked through the clinic front desk; do not offer to book it.
 - If a booking is in progress, end with one short sentence on what is still needed (given in the FACTS).
 - When suggesting a doctor or service, offer to book it.
 - Answer only the patient's LATEST message (earlier turns are context, never re-answer them); if that latest message asks several things, answer each of them.
@@ -100,6 +105,8 @@ class AgentState(TypedDict, total=False):
     history: list[dict[str, str]]
     draft: dict[str, Any]
     awaiting_confirmation: bool
+    last_booking_id: str | None
+    last_notes: str | None
     # per turn
     user_message: str
     profile: dict[str, Any]
@@ -286,6 +293,10 @@ class ClinicAgent:
         if s.get("awaiting_confirmation") and _YES.match(msg):
             a = TurnAnalysis(intent="confirm_booking", confidence=1.0)
             return {"analysis": a.model_dump(), "_detail": "confirm_booking (rule: explicit yes)"}
+        if not s.get("awaiting_confirmation") and _YES.match(msg) and s.get("last_booking_id") and not draft:
+            a = TurnAnalysis(intent="smalltalk", confidence=1.0)
+            return {"analysis": a.model_dump(), "flags": [*s.get("flags", []), "already_booked"],
+                    "_detail": "smalltalk (rule: yes after a completed booking)"}
         if s.get("awaiting_confirmation") and _NO.match(msg):
             a = TurnAnalysis(intent="decline_booking", confidence=1.0)
             return {"analysis": a.model_dump(), "_detail": "decline_booking (rule: explicit no)"}
@@ -299,7 +310,11 @@ class ClinicAgent:
             "awaiting_confirmation": s.get("awaiting_confirmation", False),
         }
         try:
-            a = self.llm.analyze(message=msg, history=self._history(s), context=context)
+            try:
+                a = self.llm.analyze(message=msg, history=self._history(s), context=context)
+            except Exception:  # noqa: BLE001 - one retry for transient or parsing errors
+                log.warning("analyze failed once, retrying", exc_info=True)
+                a = self.llm.analyze(message=msg, history=self._history(s), context=context)
         except Exception as exc:  # noqa: BLE001 - degrade gracefully, never crash the turn
             log.exception("analyze failed")
             a = TurnAnalysis(intent="booking_update" if draft else "clinic_info", confidence=0.0)
@@ -310,8 +325,14 @@ class ClinicAgent:
         if a.intent == "confirm_booking" and not s.get("awaiting_confirmation"):
             a.intent = "booking_update" if draft else "new_booking"
         a.specialty = kb.normalize_specialty(a.specialty)
+        remember: dict[str, Any] = {}
+        if a.intent in ("new_booking", "booking_update") and not draft:
+            remember["last_booking_id"] = None  # a new booking starts; "yes" belongs to it from now on
+        if a.notes and not re.search(r"\b(valid|calendar)\b", a.notes, re.I):
+            remember["last_notes"] = a.notes[:300]
         slots = {k: v for k, v in a.model_dump().items() if k in ("specialty", "doctor", "treatment", "date", "time") and v}
-        return {"analysis": a.model_dump(), "_detail": f"{a.intent} ({a.confidence:.2f}) {json.dumps(slots) if slots else ''}".strip()}
+        return {"analysis": a.model_dump(), **remember,
+                "_detail": f"{a.intent} ({a.confidence:.2f}) {json.dumps(slots) if slots else ''}".strip()}
 
     def retrieve(self, s: AgentState) -> dict:
         a = s["analysis"]
@@ -369,10 +390,18 @@ class ClinicAgent:
                 line += f" - note: the clinic is normally closed on {_DAYS[date.fromisoformat(b['bookingDate']).weekday()]}days; please double-check with the front desk"
             lines.append(line)
         appendix = ("Your upcoming appointments:\n" + "\n".join(lines)) if lines else "You have no upcoming appointments."
+        if re.search(r"\b(past|previous|last|history|before|visited)\b", s["user_message"], re.I) and not re.search(r"\b(next|upcoming)\b", s["user_message"], re.I):
+            hist = s["profile"].get("treatmentHistory", [])
+            past_lines = [f"- {_fmt_date(b['bookingDate'])}: {b['treatmentName']} with {b['doctorName']} ({b['bookingId']}, {b['status']})" for b in past]
+            past_lines += [f"- {_fmt_date(h['visitDate'])}: visit with {h['doctorName']} - {h['diagnosis']}" for h in hist]
+            appendix = ("Your past visits:\n" + "\n".join(past_lines)) if past_lines else "No past visits on record."
         facts.append("The full appointment list is shown to the patient below your answer.")
         return {"retrieved": ids, "facts": facts, "appendix": appendix, "_detail": f"{len(upcoming)} upcoming, {len(past)} past"}
 
     def answer(self, s: AgentState) -> dict:
+        if "already_booked" in s.get("flags", []):
+            return self._finish(s, f"You're all set - booking {s['last_booking_id']} is already confirmed. "
+                                   "Is there anything else I can help with?", detail="booking already confirmed")
         profile = s["profile"]
         facts = list(s.get("facts", []))
         # Clinic cards are always available (short, and earlier turns often refer to them).
@@ -471,8 +500,10 @@ class ClinicAgent:
             m = _TIME.match(a["time"])
             if m:
                 draft["time"] = f"{int(m.group(1)):02d}:{m.group(2)}"
-        if a.get("notes") and not draft.get("notes") and not re.search(r"\b(valid|calendar|date|time)\b", a["notes"], re.I):
-            draft["notes"] = a["notes"][:300]
+        if not draft.get("notes"):
+            reason = a.get("notes") or s.get("last_notes")
+            if reason and not re.search(r"\b(valid|calendar)\b", reason, re.I):
+                draft["notes"] = reason[:300]
         if a.get("specialty") and not draft.get("doctor_id") and not draft.get("treatment_id"):
             draft["specialty"] = a["specialty"]
 
@@ -498,8 +529,16 @@ class ClinicAgent:
             if len(options) == 1:
                 draft["doctor_id"] = options[0]["id"]
                 doctor = options[0]
-        if doctor and doctor["specialty"] == "Pediatrics" and self._is_adult(s):
-            notes.append(f"Just so you know, {doctor['fullName']} is a pediatrician (children's doctor).")
+        pediatric = (doctor and doctor["specialty"] == "Pediatrics") or (treatment and treatment["category"] == "Pediatrics")
+        if pediatric and self._is_adult(s) and (a.get("doctor") or a.get("treatment")):
+            phones = "; ".join(f"{c['name']}: {c['phone']}" for c in kb.clinics.values())
+            if doctor and doctor["specialty"] == "Pediatrics":
+                draft.pop("doctor_id", None)
+            if treatment and treatment["category"] == "Pediatrics":
+                draft.pop("treatment_id", None)
+            reply = (f"Pediatric appointments are for children, and I can only book for you, {s['profile']['fullName']}. "
+                     f"A child needs their own patient record - please call the front desk ({phones}).")
+            return self._finish(s, reply, draft=draft, awaiting=False, detail="refused: pediatric booking for an adult record")
         if not doctor and draft.get("specialty") and not unknown_doctor:
             options = kb.doctors_for_specialty(draft["specialty"])
             if len(options) == 1:
@@ -570,9 +609,12 @@ class ClinicAgent:
             lines.append(f"- Please remind the doctor about your allergies: {', '.join(allergies)}.")
         if result.get("idempotentReplay"):
             lines.insert(1, "(This booking already existed, so no duplicate was created.)")
-        return self._finish(s, "\n".join(lines), draft={}, awaiting=False, booking_created=b,
-                            citations=[b["doctorId"], b["treatmentId"], b["clinicId"]],
-                            detail=f"created {b['bookingId']} via {self.tools.transport}")
+        update = self._finish(s, "\n".join(lines), draft={}, awaiting=False, booking_created=b,
+                              citations=[b["doctorId"], b["treatmentId"], b["clinicId"]],
+                              detail=f"created {b['bookingId']} via {self.tools.transport}")
+        update["last_booking_id"] = b["bookingId"]
+        update["last_notes"] = None
+        return update
 
     # ------------------------------------------------------------------ helpers
     def _now(self) -> date:
@@ -641,7 +683,7 @@ class ClinicAgent:
 
     def _third_party(self, s: AgentState) -> str | None:
         """Detects requests to book for someone other than the signed-in patient (current or previous message)."""
-        recent = [s["user_message"]] + [m["content"] for m in s.get("history", [])[-4:] if m["role"] == "user"][-1:]
+        recent = [s["user_message"]] + [m["content"] for m in s.get("history", [])[-8:] if m["role"] == "user"][-3:]
         for text in recent:
             for m in _THIRD_PARTY.finditer(text):
                 if m.group("pid"):  # a patient id

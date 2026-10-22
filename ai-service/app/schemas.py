@@ -35,7 +35,7 @@ class TurnAnalysis(BaseModel):
     date: str | None = Field(None, description="Requested appointment date resolved to YYYY-MM-DD, if given.")
     time: str | None = Field(None, description="Requested appointment time as 24h HH:MM, if given.")
     date_problem: str | None = Field(
-        None, description="If the patient gave a date that does not exist or cannot be resolved (e.g. February 30), say so briefly."
+        None, description="Only for dates that cannot exist on any calendar (e.g. February 30). Never for far-future dates."
     )
     notes: str | None = Field(
         None, description="Medical reason for the visit or symptoms only, in the patient's words. Never dates, times or remarks."

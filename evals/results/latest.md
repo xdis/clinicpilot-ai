@@ -1,16 +1,16 @@
 # ClinicPilot AI - scenario evaluation
 
-Run: 2026-10-22 03:19 against `http://localhost:3000/api`
+Run: 2026-10-22 03:44 against `http://localhost:3000/api`
 
 | Metric | Value |
 |---|---|
-| cases | 24/24 |
-| intent accuracy | 36/36 (100%) |
-| checks passed | 89/89 (100%) |
-| booking outcome accuracy | 13/13 |
-| latency ms p50 | 1281 |
-| latency ms p95 | 2473 |
-| avg tokens per turn | 1750 |
+| cases | 29/29 |
+| intent accuracy | 42/42 (100%) |
+| checks passed | 107/107 (100%) |
+| booking outcome accuracy | 17/17 |
+| latency ms p50 | 1337 |
+| latency ms p95 | 2474 |
+| avg tokens per turn | 2096 |
 
 | Case | Turns | Result |
 |---|---|---|
@@ -38,3 +38,8 @@ Run: 2026-10-22 03:19 against `http://localhost:3000/api`
 | out-of-scope | 1 | pass |
 | cancel-existing | 1 | pass |
 | smalltalk | 1 | pass |
+| book-for-family-refused | 2 | pass |
+| unknown-doctor | 1 | pass |
+| invalid-date | 1 | pass |
+| multi-part-with-appointments | 1 | pass |
+| cantonese-child-fever | 1 | pass |
