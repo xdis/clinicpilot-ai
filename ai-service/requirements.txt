@@ -1,0 +1,15 @@
+# ClinicPilot AI service (Python 3.10+)
+fastapi==0.159.1
+httpx==0.28.1
+langchain-core==1.6.13
+langchain-openai==1.7.2
+langfuse==5.0.4
+langgraph==1.2.16
+langgraph-checkpoint-sqlite==3.1.2
+mcp==2.3.0
+pydantic==2.14.1
+pydantic-settings==2.16.1
+rank-bm25==0.2.2
+uvicorn[standard]==0.54.0
+# optional: LLM_PROVIDER=anthropic
+# langchain-anthropic
