@@ -146,12 +146,20 @@ class Observability:
             yield None
             return
         from langfuse import propagate_attributes
+        from opentelemetry import trace
 
-        with propagate_attributes(session_id=session_id, user_id=pseudonym(patient_id, self._salt),
-                                  tags=tags or ["chat"], trace_name="clinicpilot.chat_turn"):
-            with self.langfuse.start_as_current_observation(name="clinicpilot.chat_turn", as_type="agent",
-                                                             input={"message": message}) as obs:
-                yield obs
+        from .backend_client import service_span
+
+        server = trace.get_current_span()  # the FastAPI request span (OpenTelemetry), before Langfuse takes over
+        token = service_span.set(server if server.get_span_context().is_valid else None)
+        try:
+            with propagate_attributes(session_id=session_id, user_id=pseudonym(patient_id, self._salt),
+                                      tags=tags or ["chat"], trace_name="clinicpilot.chat_turn"):
+                with self.langfuse.start_as_current_observation(name="clinicpilot.chat_turn", as_type="agent",
+                                                                 input={"message": message}) as obs:
+                    yield obs
+        finally:
+            service_span.reset(token)
 
     def current_trace(self) -> dict | None:
         """Trace id + url of the current turn, for the API response and for linking background work."""

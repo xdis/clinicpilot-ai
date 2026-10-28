@@ -139,3 +139,27 @@ def test_doctor_notes_from_the_visit_history_reach_the_answer(backend):
     record = next(f for f in r["grounding"] if f.startswith("[P001]"))
     assert "doctor's notes: Blood pressure normal" in record and "reason: Annual routine health checkup" in record
     assert "never recommend, renew or change medication" in record
+
+
+def test_backend_calls_are_children_of_the_service_span_not_the_langfuse_span(traced):
+    """Langfuse spans never reach Jaeger, so a backend call parented to one would be a detached span there."""
+    import httpx
+    from opentelemetry import trace
+
+    from app.backend_client import BackendClient, service_span
+
+    _, obs, _ = traced
+    seen = []
+
+    def handler(request):
+        seen.append(trace.get_current_span())
+        return httpx.Response(200, json={"ok": True})
+
+    client = BackendClient("http://backend")
+    client._http = httpx.Client(base_url="http://backend", transport=httpx.MockTransport(handler))
+    with TracerProvider().get_tracer("test").start_as_current_span("POST /v1/chat") as server:
+        with obs.turn(session_id="s1", patient_id="P001", message="hi"):
+            assert trace.get_current_span() is not server  # inside the agent, the Langfuse span is current
+            client._request("GET", "/patients/P001")
+    assert seen == [server]
+    assert service_span.get() is None

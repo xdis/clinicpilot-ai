@@ -7,6 +7,10 @@ import httpx
 
 # Set per request by the API layer; forwarded to the backend so both services log the same id.
 current_request_id: ContextVar[str | None] = ContextVar("current_request_id", default=None)
+# This service's OpenTelemetry span for the current turn (set by telemetry.Observability.turn). Backend calls are
+# parented to it rather than to the Langfuse span that is current inside the agent: Langfuse spans go to Langfuse
+# only, so a child of one would show up in Jaeger with a missing parent ("incomplete" trace).
+service_span: ContextVar[Any] = ContextVar("service_span", default=None)
 
 
 class ToolError(Exception):
@@ -32,10 +36,19 @@ class BackendClient:
         rid = current_request_id.get()
         if rid:
             kwargs["headers"] = {**kwargs.get("headers", {}), "x-request-id": rid}
+        token = None
+        span = service_span.get()
+        if span is not None:
+            from opentelemetry import context, trace
+
+            token = context.attach(trace.set_span_in_context(span))
         try:
             res = self._http.request(method, path, **kwargs)
         except httpx.HTTPError as exc:
             raise ToolError("BACKEND_UNREACHABLE", f"Backend not reachable: {exc}") from exc
+        finally:
+            if token is not None:
+                context.detach(token)
         if res.status_code >= 400:
             try:
                 err = res.json().get("error", {})
