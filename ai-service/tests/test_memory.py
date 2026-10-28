@@ -376,3 +376,14 @@ def test_session_id_reused_after_reset_keeps_both_episodes(magent, memory):
 
 def _kb(backend: FakeBackend) -> KnowledgeBase:
     return KnowledgeBase(backend.get_catalog())
+
+
+def test_long_episode_summary_is_cut_at_a_sentence_not_mid_word(memory):
+    from app.memory import EpisodeSummary
+
+    first = ("The patient asked about Metro Care's opening hours, flu shot pricing, and cancellation policies, and "
+             "confirmed their preference for Dr. Elena Rostova in Dermatology Consultation at Sunset Wellness Center "
+             "with a morning slot.")
+    long = first + " The visit ended unresolved, as the specific morning day for the booking was not chosen."
+    memory.add_episode("P001", EpisodeSummary(summary=long), session_id="x", extractor="t", day="2026-10-28")
+    assert memory.episodes("P001")[0]["summary"] == first  # 312 chars > 300: whole first sentence, not "...was"

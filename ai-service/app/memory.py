@@ -86,6 +86,20 @@ def from_messages(messages: list[BaseMessage]) -> list[dict[str, str]]:
     return [{"role": "user" if isinstance(m, HumanMessage) else "assistant", "content": str(m.content)} for m in messages]
 
 
+_SENTENCE_END = re.compile(r"(?<!\bDr)(?<!\bMr)(?<!\bMs)(?<!\bMrs)(?<!\bSt)[.!?。！？](?=\s|$)")
+
+
+def _shorten(text: str, limit: int) -> str:
+    """Cuts at the last sentence end (or word) that fits, so stored text never stops mid-word."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    ends = [m.end() for m in _SENTENCE_END.finditer(cut)]
+    if ends and ends[-1] >= limit // 2:
+        return cut[: ends[-1]].strip()
+    return cut.rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
 def redact_injections(messages: list[dict[str, str]]) -> list[dict[str, str]]:
     """User text that looks like instructions is not carried into summaries (which reach the system prompt)."""
     return [{"role": m["role"], "content": "[message removed: looked like instructions to the assistant]"}
@@ -383,7 +397,7 @@ class PatientMemory:
         sentences = re.split(r"(?<=[.!?。！？])\s+", re.sub(r"\s+", " ", text).strip())
         # per sentence: "the patient tried to make the assistant book for P002" must not cost the whole episode
         kept = [x for x in sentences if x and not _SAFETY.search(x) and not looks_like_injection(x)]
-        out = " ".join(kept).strip()[:limit]
+        out = _shorten(" ".join(kept).strip(), limit)
         if not out or looks_like_injection(out):
             return None
         return out
