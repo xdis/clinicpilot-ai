@@ -1,0 +1,20 @@
+{
+  "_comment": "Release gates for evals/agent_eval.py. min/max are absolute; no_worse_than_baseline allows noise: rates may drop by at most the value (absolute), latency/tokens/calls/cost may grow by at most that fraction.",
+  "min": {
+    "pass@1": 0.95,
+    "route_accuracy": 0.98,
+    "groundedness": 0.9
+  },
+  "max": {
+    "latency_ms_p95": 6000,
+    "llm_calls_per_turn": 3.5
+  },
+  "no_worse_than_baseline": {
+    "pass@1": 0.03,
+    "route_accuracy": 0.02,
+    "groundedness": 0.05,
+    "latency_ms_p95": 0.25,
+    "tokens_per_turn": 0.15,
+    "cost_per_turn_usd": 0.15
+  }
+}

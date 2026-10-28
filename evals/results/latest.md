@@ -1,6 +1,6 @@
 # ClinicPilot AI - scenario evaluation
 
-Run: 2026-10-22 04:03 against `http://localhost:3000/api`
+Run: 2026-10-28 03:38 against `http://localhost:3001/api`
 
 | Metric | Value |
 |---|---|
@@ -8,9 +8,9 @@ Run: 2026-10-22 04:03 against `http://localhost:3000/api`
 | intent accuracy | 43/43 (100%) |
 | checks passed | 112/112 (100%) |
 | booking outcome accuracy | 18/18 |
-| latency ms p50 | 1354 |
-| latency ms p95 | 2638 |
-| avg tokens per turn | 2151 |
+| latency ms p50 | 1189 |
+| latency ms p95 | 2243 |
+| avg tokens per turn | 2191 |
 
 | Case | Turns | Result |
 |---|---|---|

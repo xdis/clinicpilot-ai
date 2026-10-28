@@ -1,0 +1,22 @@
+{
+ "judge_model": "deepseek-chat",
+ "items": 40,
+ "by_kind": {
+  "doctor fact": "4/4",
+  "wrong price": "4/4",
+  "wrong specialty": "4/4",
+  "clinic hours": "2/2",
+  "wrong hours": "2/2",
+  "invented service": "2/2",
+  "treatment fact": "5/5",
+  "wrong duration": "5/5",
+  "live reply": "6/6",
+  "live reply, one number changed": "2/2",
+  "live reply + invented service": "4/4"
+ },
+ "accuracy": 1.0,
+ "error_recall": 1.0,
+ "false_alarm_rate": 0.0,
+ "cohens_kappa": 1.0,
+ "disagreements": []
+}
