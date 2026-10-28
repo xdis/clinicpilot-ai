@@ -1,0 +1,3 @@
+# Evaluation-only dependencies (installed by scripts/setup.sh via ai-service/requirements-dev.txt)
+openevals==0.2.2    # LLM-as-judge (RAG groundedness prompt)
+agentevals==0.0.9   # trajectory match evaluators
