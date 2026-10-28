@@ -86,7 +86,17 @@ class ChatResponse(BaseModel):
     trace: list[TraceStep]
     usage: dict[str, int]
     latency_ms: int
+    memory: dict[str, Any] | None = None
+    trace_id: str | None = None  # Langfuse / OpenTelemetry trace of this turn (when tracing is enabled)
+    trace_url: str | None = None
+    grounding: list[str] | None = None  # evaluation mode only (EVAL_EXPOSE_GROUNDING=true)
 
 
 class SummarizeRequest(BaseModel):
     transcript: str = Field(min_length=20, max_length=20000)
+
+
+class FeedbackRequest(BaseModel):
+    trace_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    value: bool
+    comment: str | None = Field(None, max_length=500)

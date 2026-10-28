@@ -29,7 +29,14 @@ class Settings(BaseSettings):
 
     # Conversation state (LangGraph checkpointer)
     checkpoint_db: str = str(SERVICE_DIR / "data" / "checkpoints.sqlite3")
-    history_turns: int = 8
+    history_turns: int = 8  # cap on turns in the short-term window (on top of the token budget)
+
+    # Memory (app/memory.py)
+    short_term_max_tokens: int = 1200  # token budget for the recent-turns window; overflow is folded into a summary
+    memory_enabled: bool = True  # long-term memory across sessions
+    memory_db: str = str(SERVICE_DIR / "data" / "memory.sqlite3")
+    memory_tenant: str = "default"  # clinic group; namespaces are (tenant, patient)
+    memory_retention_days: int = 365
 
     # Pin "today" for demos and tests (YYYY-MM-DD). Empty = real date in the clinic timezone.
     clinic_today: str | None = None
@@ -39,6 +46,15 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = None
     langfuse_secret_key: str | None = None
     langfuse_host: str | None = None
+    langfuse_environment: str = "development"  # Langfuse environment filter (development / staging / production / eval)
+    langfuse_user_salt: str = ""  # salt for the pseudonymous user id in traces
+    app_release: str | None = None  # shown as "release" in Langfuse (e.g. git sha)
+    # Evaluation only: return the facts behind each answer so a judge sees exactly what the model saw. Never in prod.
+    eval_expose_grounding: bool = False
+
+    # Speech-to-text for the consultation summarizer (faster-whisper; tiny / base / small / medium)
+    whisper_model: str = "small"
+    whisper_preload: bool = True  # load the model at startup in the background (first start downloads it)
 
 
 @lru_cache

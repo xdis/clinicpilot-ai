@@ -11,6 +11,7 @@ import re
 from datetime import timedelta
 from typing import Any
 
+from .memory import EpisodeSummary, PreferenceUpdate
 from .schemas import MedicalSummary, TurnAnalysis
 
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -114,3 +115,40 @@ class FakeLLM:
     def summarize(self, transcript: str) -> MedicalSummary:
         self.usage["llm_calls"] += 1
         return MedicalSummary(chief_complaint=transcript.splitlines()[0][:120], diagnosis="Not stated")
+
+    # memory ---------------------------------------------------------------------------------
+    def summarize_turns(self, previous: str, messages: list[dict[str, str]]) -> str:
+        self.usage["llm_calls"] += 1
+        said = "; ".join(m["content"][:60] for m in messages if m["role"] == "user")
+        return f"{previous} Patient said: {said}.".strip()
+
+    def extract_preferences(self, *, message: str, history: list[dict[str, str]], context: dict[str, Any]) -> PreferenceUpdate:
+        self.usage["llm_calls"] += 1
+        m = message.lower()
+        upd = PreferenceUpdate()
+        tod = re.search(r"\b(morning|afternoon|evening)s?\b", m)
+        if tod and re.search(r"\b(prefer|usually|always|only|rather|instead|from now on|next time)\b", m):
+            upd.preferred_time_of_day = tod.group(1)  # type: ignore[assignment]
+        lang = re.search(r"\b(?:speak|in|use)\s+(english|cantonese|mandarin|chinese|spanish|klingon)\b", m)
+        if lang and re.search(r"\b(prefer|please|always|speak)\b", m):  # deliberately loose, like a real model can be
+            upd.preferred_language = lang.group(1)
+        doc = re.search(r"\b(?:prefer|usually see|always see|my usual doctor is|my regular doctor is)\s+(dr\.? [a-z]+)", m)
+        if doc:
+            upd.preferred_doctor = doc.group(1)
+        if re.search(r"\b(no longer|not anymore|don'?t want)\b.*\bdr\b", m):
+            upd.clear_fields.append("preferred_doctor")
+        allergy = re.search(r"\b(allergic to [a-z ]+|i take [a-z ]+|i'?m on [a-z ]+)", m)
+        if allergy:
+            upd.safety_statement = allergy.group(1).strip()
+        return upd
+
+    def summarize_episode(self, *, summary: str, history: list[dict[str, str]]) -> EpisodeSummary:
+        self.usage["llm_calls"] += 1
+        users = [h["content"] for h in history if h["role"] == "user"]
+        first = users[0][:100] if users else "a short chat"
+        booked = re.search(r"Booking ID: (B\d+)", " ".join(h["content"] for h in history))
+        outcome = f" It ended with booking {booked.group(1)}." if booked else " Nothing was booked."
+        topics = sorted({w for w in re.findall(r"[a-z]{4,}", " ".join(users).lower())
+                         if w in {"knee", "rash", "skin", "flu", "checkup", "dermatology", "orthopedics", "price", "fees"}})
+        return EpisodeSummary(summary=f"The patient asked: {first}.{outcome}", topics=topics[:5],
+                              open_item=None if booked else (first if users else None))

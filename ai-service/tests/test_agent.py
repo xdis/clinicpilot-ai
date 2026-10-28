@@ -204,3 +204,13 @@ def test_unavailable_specialty_is_answered_before_booking(agent, backend):
     r = agent.chat("s23", "P001", "Do you have a cardiologist? I want to book one for next Monday at 10")
     assert "We don't have a cardiologist" in r["reply"] and "General Practice" in r["reply"]
     assert not r["awaiting_confirmation"] and r["booking_draft"] is None
+
+
+def test_slot_taken_between_check_and_create_asks_for_another_time(agent, backend):
+    agent.chat("race", "P001", "I want to book an appointment with Dr Rostova")
+    agent.chat("race", "P001", "Monday at 10am")
+    backend.taken_on_create = True
+    r = agent.chat("race", "P001", "yes")
+    assert r["booking_created"] is None and backend.created == []
+    assert "can't be booked" in r["reply"] and "Which other date and time" in r["reply"]
+    assert "date" not in r["booking_draft"] and "time" not in r["booking_draft"]  # asks again, keeps doctor and service

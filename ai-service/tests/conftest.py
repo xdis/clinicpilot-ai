@@ -55,6 +55,7 @@ class FakeBackend:
         ]
         self.bookings = [dict(r) for r in _rows("patient_bookings.csv")]
         self.created: list[dict[str, Any]] = []
+        self.taken_on_create = False
         self.keys: dict[str, dict[str, Any]] = {}
 
     def _view(self, b: dict[str, Any]) -> dict[str, Any]:
@@ -69,7 +70,11 @@ class FakeBackend:
     def get_patient_profile(self, patient_id: str) -> dict[str, Any]:
         return {"patientId": patient_id, "fullName": "John Doe", "firstName": "John", "dob": "1988-05-14",
                 "allergies": ["Penicillin", "Peanuts"], "bookings": self.list_bookings(patient_id),
-                "treatmentHistory": [{"visitDate": "2026-04-12", "diagnosis": "Healthy / Normal Range", "doctorName": "Dr. Sarah Jenkins"}]}
+                "treatmentHistory": [
+                    {"visitDate": h["visit_date"], "doctorName": next(d["fullName"] for d in self.doctors if d["id"] == h["doctor_id"]),
+                     "chiefComplaint": h["chief_complaint"], "diagnosis": h["diagnosis"],
+                     "prescribedMedication": h["prescribed_medication"], "doctorNotes": h["doctor_notes"]}
+                    for h in _rows("patient_treatment_history.csv") if h["patient_id"] == patient_id]}
 
     def list_bookings(self, patient_id: str, when: str = "all") -> list[dict[str, Any]]:
         return [self._view(b) for b in sorted(self.bookings, key=lambda b: b["booking_date"]) if b["patient_id"] == patient_id]
@@ -97,6 +102,8 @@ class FakeBackend:
             return {"booking": self.keys[key], "idempotentReplay": True}
         if not self.validate_booking(booking)["valid"]:
             raise ToolError("BOOKING_INVALID", "invalid", status=422)
+        if self.taken_on_create:  # simulate a concurrent booking between validate and create
+            raise ToolError("SLOT_TAKEN", "That time was just booked by someone else.", status=409)
         row = {"booking_id": f"B{1005 + len(self.created)}", "patient_id": booking["patientId"], "doctor_id": booking["doctorId"],
                "treatment_id": booking["treatmentId"], "booking_date": booking["bookingDate"],
                "booking_time": booking["bookingTime"] + ":00", "status": "Confirmed", "notes": booking.get("notes", ""), "source": "chatbot"}
