@@ -170,8 +170,11 @@ export class BookingsService {
       const free = freeStarts(doctor.clinic.operatingHours, dto.bookingDate, durationMinutes, doctorBusy, {
         notBefore: dto.bookingDate === today && nowMin !== null ? nowMin : -1,
       });
+      // another patient's booking: say when, never which booking (its id belongs to someone else)
+      const mine = sameDay.some((b) => b.id === clash.id && b.patientId === dto.patientId);
+      const when = mine ? clash.label : clash.label.slice(clash.label.indexOf(', ') + 2);
       problems.push(
-        `${doctor.fullName} is already booked at that time (${clash.label}).` +
+        `${doctor.fullName} is already booked at that time (${when}).` +
           (free.length ? ` Free times that day: ${free.join(', ')}.` : ' No other free time that day.'),
       );
     }

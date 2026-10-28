@@ -144,6 +144,7 @@ describe('ClinicPilot backend (e2e)', () => {
       const res = await book({ patientId: 'P003', doctorId: 'D104', treatmentId: 'T005', bookingDate: '2026-11-02', bookingTime: '11:30' }).expect(422);
       expect(res.body.error.message).toContain('Dr. James Wilson is already booked at that time');
       expect(res.body.error.message).toContain('Free times that day: 08:00, 08:30, 09:00');
+      expect(res.body.error.message).toMatch(/already booked at that time \(11:00-11:45\)/); // no other patient's booking id
       await book({ patientId: 'P003', doctorId: 'D104', treatmentId: 'T005', bookingDate: '2026-11-02', bookingTime: '11:45' }).expect(201); // back-to-back
     });
 
