@@ -24,3 +24,5 @@ evals/results/*.json
 *.sqlite3-wal
 ai-service/data/
 .logs/
+!evals/results/baseline.json
+!evals/results/judge_calibration.json
