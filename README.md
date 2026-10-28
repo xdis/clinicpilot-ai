@@ -13,7 +13,7 @@ An AI clinic assistant MVP. A patient chats in natural language to ask about cli
 - **Agent trace panel** in the UI: intent, steps, tool calls, sources, tokens and latency for every turn.
 - **Observability**: one trace id from the NestJS gateway through FastAPI into the LangGraph agent. OpenTelemetry (Collector → Jaeger) for service spans; self-hosted Langfuse for the agent: nodes, LLM generations, background memory writes, per-turn scores, and user feedback through the API endpoint `POST /v1/feedback` (UI hook is a next step). Patient identifiers are pseudonymised and PII is masked before export.
 - **Evaluation framework** (`evals/agent_eval.py`): outcome checks, trajectory match (agentevals), groundedness with a calibrated LLM judge (openevals), LongMemEval-style memory cases, pass^k consistency, latency/token/cost, regression gates against a baseline, every run recorded as a Langfuse experiment.
-- **Tested and evaluated**: 113 automated tests (offline, run in CI), a 32-scenario + 7 memory-case evaluation against the real LLM (3 repetitions), and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
+- **Tested and evaluated**: 115 automated tests (offline, run in CI), a 32-scenario + 7 memory-case evaluation against the real LLM (3 repetitions), and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
 - Bonus: transcript summarizer **from text or a voice recording** (local Whisper, the audio never leaves the machine), appointment-conflict checks with a race-safe database constraint, Docker Compose, Kubernetes (tested on kind).
 
 Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.
