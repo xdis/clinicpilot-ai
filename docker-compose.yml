@@ -1,10 +1,17 @@
 # One-command stack:  cp ai-service/.env.example ai-service/.env  (add your key)  &&  docker compose up --build
+# With tracing:       docker compose -f observability/otel/docker-compose.yml up -d     (Jaeger UI :16686)
+#                     docker compose -f observability/langfuse/docker-compose.yml -f observability/langfuse/docker-compose.override.yml up -d   (Langfuse :3100)
+#                     OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318 docker compose up --build
 # UI: http://localhost:8080   API docs: http://localhost:3000/api/docs
 services:
   backend:
     build: { context: ., dockerfile: backend/Dockerfile }
     environment:
       AI_SERVICE_URL: http://ai-service:8000
+      # tracing (optional): start observability/otel first; empty = off
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: clinicpilot-backend
+    extra_hosts: ["host.docker.internal:host-gateway"]
     ports: ["3000:3000"]
     volumes: [backend-data:/data]
     healthcheck:
@@ -18,6 +25,12 @@ services:
     env_file: ai-service/.env
     environment:
       BACKEND_URL: http://backend:3000/api
+      MEMORY_DB: /data/memory.sqlite3            # long-term memory on the volume, survives rebuilds
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_SERVICE_NAME: clinicpilot-ai-service
+      # Langfuse keys come from ai-service/.env; inside a container "localhost" is the container itself
+      LANGFUSE_HOST: ${LANGFUSE_HOST_FOR_CONTAINERS:-http://host.docker.internal:3100}
+    extra_hosts: ["host.docker.internal:host-gateway"]
     expose: ["8000"]   # internal only: the UI and clients go through the backend
     volumes: [ai-data:/data]
     depends_on:
@@ -25,7 +38,7 @@ services:
 
   frontend:
     build: ./frontend
-    ports: ["8080:80"]
+    ports: ["8080:8080"]
     depends_on: [backend, ai-service]
 
 volumes:

@@ -1,0 +1,29 @@
+# OpenTelemetry Collector (contrib) for ClinicPilot: receives OTLP from the NestJS backend and the FastAPI AI
+# service, batches, and forwards to Jaeger. LLM/agent traces go to Langfuse directly from the AI service's
+# Langfuse SDK (own provider), so prompts and patient text never pass through this pipeline.
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+
+processors:
+  memory_limiter: { check_interval: 1s, limit_mib: 256 }
+  batch: {}
+  attributes/scrub:                       # defence in depth: drop request bodies / query strings if any instrumentation adds them
+    actions:
+      - { key: http.request.body, action: delete }
+      - { key: url.query, action: delete }
+
+exporters:
+  otlp_grpc/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: true }
+  debug: { verbosity: basic }
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, batch]
+      exporters: [otlp_grpc/jaeger]

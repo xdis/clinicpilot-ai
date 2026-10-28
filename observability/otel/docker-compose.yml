@@ -1,0 +1,18 @@
+# Tracing backbone: OpenTelemetry Collector -> Jaeger (UI http://localhost:16686).
+#   docker compose -f observability/otel/docker-compose.yml up -d
+# Services send OTLP/HTTP to http://localhost:4318 (or http://host.docker.internal:4318 from containers / kind).
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.164.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes: ["./otel-collector.yaml:/etc/otelcol/config.yaml:ro"]
+    ports:
+      - 127.0.0.1:4317:4317
+      - 127.0.0.1:4318:4318     # containers and kind reach it via host.docker.internal (verified at run time)
+    depends_on: [jaeger]
+    restart: unless-stopped
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.22.0
+    ports:
+      - 127.0.0.1:16686:16686   # UI
+    restart: unless-stopped

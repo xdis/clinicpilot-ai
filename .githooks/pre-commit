@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Blocks a commit that contains a secret (API keys, tokens, passwords). Enable once per clone:
+#   git config core.hooksPath .githooks
+# Real keys live only in gitignored .env files (ai-service/.env, observability/langfuse/.env).
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks not installed (brew install gitleaks); secret scan skipped" >&2
+  exit 0
+fi
+gitleaks git --pre-commit --staged --redact --no-banner -v || {
+  echo "pre-commit: possible secret in the staged changes. Remove it (or move it to a gitignored .env) and commit again." >&2
+  exit 1
+}

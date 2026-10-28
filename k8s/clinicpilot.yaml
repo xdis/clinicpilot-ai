@@ -1,9 +1,9 @@
-# Reference Kubernetes deployment (single namespace).
-# SQLite on a PersistentVolume means one backend replica; switch Prisma to PostgreSQL to scale out.
-# Build the three images first (see README "Kubernetes"), then:
-#   kubectl create namespace clinicpilot
-#   kubectl create secret generic clinicpilot-llm -n clinicpilot --from-literal=LLM_API_KEY=...
-#   kubectl apply -f k8s/clinicpilot.yaml
+# ClinicPilot on Kubernetes (tested on a local kind cluster: scripts/kind-up.sh).
+# - SQLite on PersistentVolumes => backend and ai-service run as single replicas (strategy Recreate). To scale out:
+#   Prisma -> PostgreSQL, LangGraph AsyncPostgresSaver + PostgresStore, memory writes through a queue; then HPA.
+# - Secrets (LLM key, Langfuse keys) are created by scripts/kind-up.sh from ai-service/.env, never committed.
+# - Tracing: OTLP to the OpenTelemetry Collector and Langfuse running next to the cluster (Docker Compose),
+#   reached via host.docker.internal; set OTEL_EXPORTER_OTLP_ENDPOINT / LANGFUSE_HOST to in-cluster URLs in prod.
 apiVersion: v1
 kind: Namespace
 metadata: { name: clinicpilot }
@@ -15,84 +15,116 @@ data:
   LLM_PROVIDER: deepseek
   LLM_MODEL: deepseek-chat
   LLM_BASE_URL: https://api.deepseek.com
-  TOOL_TRANSPORT: rest
+  TOOL_TRANSPORT: mcp
+  CLINIC_TODAY: "2026-10-26"
   BACKEND_URL: http://backend:3000/api
   AI_SERVICE_URL: http://ai-service:8000
+  CHECKPOINT_DB: /data/checkpoints.sqlite3
+  MEMORY_DB: /data/memory.sqlite3
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://host.docker.internal:4318
+  LANGFUSE_HOST: http://host.docker.internal:3100
+  LANGFUSE_ENVIRONMENT: kind
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata: { name: backend-data, namespace: clinicpilot }
-spec:
-  accessModes: [ReadWriteOnce]
-  resources: { requests: { storage: 1Gi } }
+spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 1Gi } } }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: ai-data, namespace: clinicpilot }
+spec: { accessModes: [ReadWriteOnce], resources: { requests: { storage: 2Gi } } }   # includes the ~480 MB Whisper model
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: backend, namespace: clinicpilot }
+metadata: { name: backend, namespace: clinicpilot, labels: { app: backend } }
 spec:
   replicas: 1
-  strategy: { type: Recreate }
+  strategy: { type: Recreate }            # RWO SQLite volume: never two pods at once
   selector: { matchLabels: { app: backend } }
   template:
     metadata: { labels: { app: backend } }
     spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, fsGroup: 1000, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: backend
-          image: clinicpilot/backend:latest
+          image: clinicpilot/backend:dev
           imagePullPolicy: IfNotPresent
-          ports: [{ containerPort: 3000 }]
+          ports: [{ containerPort: 3000, name: http }]
           envFrom: [{ configMapRef: { name: clinicpilot-config } }]
+          env:
+            - { name: OTEL_SERVICE_NAME, value: clinicpilot-backend }
           volumeMounts: [{ name: data, mountPath: /data }]
-          readinessProbe: { httpGet: { path: /api/health, port: 3000 }, initialDelaySeconds: 10 }
-          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 512Mi } }
+          startupProbe: { httpGet: { path: /api/health, port: http }, periodSeconds: 5, failureThreshold: 36 }
+          readinessProbe: { httpGet: { path: /api/health, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /api/health, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 768Mi } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
       volumes: [{ name: data, persistentVolumeClaim: { claimName: backend-data } }]
 ---
 apiVersion: v1
 kind: Service
 metadata: { name: backend, namespace: clinicpilot }
-spec: { selector: { app: backend }, ports: [{ port: 3000, targetPort: 3000 }] }
+spec: { selector: { app: backend }, ports: [{ port: 3000, targetPort: http }] }
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: ai-service, namespace: clinicpilot }
+metadata: { name: ai-service, namespace: clinicpilot, labels: { app: ai-service } }
 spec:
   replicas: 1
+  strategy: { type: Recreate }            # checkpoints + long-term memory on an RWO SQLite volume
   selector: { matchLabels: { app: ai-service } }
   template:
     metadata: { labels: { app: ai-service } }
     spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 10001, fsGroup: 10001, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: ai-service
-          image: clinicpilot/ai-service:latest
+          image: clinicpilot/ai-service:dev
           imagePullPolicy: IfNotPresent
-          ports: [{ containerPort: 8000 }]
+          ports: [{ containerPort: 8000, name: http }]
           envFrom:
             - configMapRef: { name: clinicpilot-config }
-            - secretRef: { name: clinicpilot-llm }
-          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 5 }
-          resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+            - secretRef: { name: clinicpilot-secrets }        # LLM_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+          env:
+            - { name: OTEL_SERVICE_NAME, value: clinicpilot-ai-service }
+          volumeMounts: [{ name: data, mountPath: /data }]
+          startupProbe: { httpGet: { path: /health, port: http }, periodSeconds: 3, failureThreshold: 40 }
+          readinessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /health, port: http }, periodSeconds: 20, failureThreshold: 3 }
+          resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { memory: 2Gi } }   # agent + Whisper small (int8)
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
+      volumes: [{ name: data, persistentVolumeClaim: { claimName: ai-data } }]        # sqlite + Whisper cache (HF_HOME)
 ---
 apiVersion: v1
 kind: Service
 metadata: { name: ai-service, namespace: clinicpilot }
-spec: { selector: { app: ai-service }, ports: [{ port: 8000, targetPort: 8000 }] }
+spec: { selector: { app: ai-service }, ports: [{ port: 8000, targetPort: http }] }
 ---
 apiVersion: apps/v1
 kind: Deployment
-metadata: { name: frontend, namespace: clinicpilot }
+metadata: { name: frontend, namespace: clinicpilot, labels: { app: frontend } }
 spec:
-  replicas: 1
+  replicas: 2                              # stateless: safe to scale
   selector: { matchLabels: { app: frontend } }
   template:
     metadata: { labels: { app: frontend } }
     spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 101, seccompProfile: { type: RuntimeDefault } }
       containers:
         - name: frontend
-          image: clinicpilot/frontend:latest
+          image: clinicpilot/frontend:dev
           imagePullPolicy: IfNotPresent
-          ports: [{ containerPort: 80 }]
+          ports: [{ containerPort: 8080, name: http }]
+          readinessProbe: { httpGet: { path: /, port: http }, periodSeconds: 10 }
+          livenessProbe: { httpGet: { path: /, port: http }, periodSeconds: 20 }
+          resources: { requests: { cpu: 20m, memory: 32Mi }, limits: { memory: 128Mi } }
+          securityContext: { allowPrivilegeEscalation: false, capabilities: { drop: [ALL] } }
 ---
 apiVersion: v1
 kind: Service
 metadata: { name: frontend, namespace: clinicpilot }
-spec: { type: LoadBalancer, selector: { app: frontend }, ports: [{ port: 80, targetPort: 80 }] }
+spec:
+  type: NodePort                           # kind maps node port 30080 to http://localhost:8088 (k8s/kind-config.yaml)
+  selector: { app: frontend }
+  ports: [{ port: 80, targetPort: http, nodePort: 30080 }]

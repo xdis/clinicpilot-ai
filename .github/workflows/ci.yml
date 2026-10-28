@@ -5,6 +5,14 @@ on:
   pull_request:
 
 jobs:
+  secrets:
+    # fails the build if any commit in the push contains an API key / token (keys live only in gitignored .env files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: gitleaks/gitleaks-action@v2
+        env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
   backend:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: backend } }

@@ -1,0 +1,8 @@
+# Local cluster for ClinicPilot: kind create cluster --config k8s/kind-config.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: clinicpilot
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - { containerPort: 30080, hostPort: 8088, listenAddress: 127.0.0.1 }   # frontend NodePort -> http://localhost:8088

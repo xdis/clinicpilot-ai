@@ -1,0 +1,21 @@
+# Local overrides for ClinicPilot. docker-compose.yml is the unmodified upstream file
+# (https://github.com/langfuse/langfuse/blob/v4.71.0/docker-compose.yml); compose merges this file on top.
+# - Langfuse UI on http://localhost:3100 (3000 is the ClinicPilot backend)
+# - every port bound to 127.0.0.1; Redis and Postgres moved off 6379/5432 (often taken on dev machines)
+# - secrets and the headless-initialised org/project/API keys come from .env (see .env.example)
+services:
+  langfuse-web:
+    ports: !override
+      - 127.0.0.1:3100:3000
+  langfuse-worker:
+    environment:
+      NEXTAUTH_URL: http://localhost:3100
+  minio:
+    ports: !override
+      - 127.0.0.1:9090:9000
+      - 127.0.0.1:9091:9001
+  redis:
+    ports: !override []
+  postgres:
+    ports: !override
+      - 127.0.0.1:5442:5432
