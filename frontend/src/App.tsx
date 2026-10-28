@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Booking, type ChatResponse, type MedicalSummary, type Patient } from './api'
+import { api, type AudioSummary, type Booking, type ChatResponse, type MedicalSummary, type Patient, type PatientMemory } from './api'
 
 const PATIENT_ID = 'P001' // single-patient demo, as specified in the assignment
 
@@ -10,7 +10,15 @@ const QUICK_PROMPTS = [
   'yes',
   'When is my next appointment?',
   'Can I book an appointment for my peanut allergy?',
+  'I usually see Dr Rostova and I prefer morning appointments.',
 ]
+
+const PREF_LABELS: Record<string, string> = {
+  preferred_language: 'Language',
+  preferred_time_of_day: 'Time of day',
+  preferred_doctor_id: 'Doctor',
+  preferred_clinic_id: 'Clinic',
+}
 
 const SAMPLE_TRANSCRIPT = `Doctor: Good morning, what brings you in today?
 Patient: I've had a sore throat and a mild fever for three days.
@@ -58,6 +66,7 @@ export default function App() {
   const [highlight, setHighlight] = useState<string | null>(null)
   const [tab, setTab] = useState<'chat' | 'summary'>('chat')
   const [bookingsError, setBookingsError] = useState<string | null>(null)
+  const [memory, setMemory] = useState<PatientMemory | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   const refreshBookings = useCallback(async () => {
@@ -68,6 +77,20 @@ export default function App() {
       setBookingsError((e as Error).message)
     }
   }, [])
+
+  const refreshMemory = useCallback(async () => {
+    try {
+      setMemory(await api.memory(PATIENT_ID))
+    } catch {
+      setMemory(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    void refreshMemory()
+    const timer = setInterval(refreshMemory, 3000) // background memory writes show up here
+    return () => clearInterval(timer)
+  }, [refreshMemory])
 
   useEffect(() => {
     api.patient(PATIENT_ID).then(setPatient).catch(() => setPatient(null))
@@ -103,6 +126,8 @@ export default function App() {
   }
 
   function resetConversation() {
+    // the finished conversation becomes one long-term episode (written in the background)
+    if (messages.some((m) => m.role === 'user')) api.endSession(sessionId, PATIENT_ID).catch(() => undefined)
     setSessionId(newSessionId())
     setLastTurn(null)
     setMessages([{ role: 'assistant', text: 'New conversation started. How can I help?' }])
@@ -210,6 +235,16 @@ export default function App() {
           </section>
 
           <aside className="panel right">
+            <MemoryPanel
+              memory={memory}
+              turn={lastTurn}
+              onForget={async () => {
+                if (!window.confirm('Delete everything the assistant remembers about John, including chat sessions?')) return
+                await api.forget(PATIENT_ID)
+                await refreshMemory()
+                resetConversation()
+              }}
+            />
             <div className="row">
               <h2>Bookings (live from database)</h2>
               <button className="secondary small" onClick={() => void refreshBookings()}>
@@ -293,11 +328,96 @@ export default function App() {
   )
 }
 
+function MemoryPanel({ memory, turn, onForget }: { memory: PatientMemory | null; turn: ChatResponse | null; onForget: () => void }) {
+  const st = turn?.memory?.short_term
+  const profile = memory?.profile ?? {}
+  return (
+    <div className="memory">
+      <div className="row">
+        <h2>Memory</h2>
+        {memory?.enabled && (
+          <button className="secondary small" onClick={onForget}>
+            Forget me
+          </button>
+        )}
+      </div>
+      <div className="small">
+        <b>Short-term</b> (this session)
+      </div>
+      {st ? (
+        <div className="small">
+          {st.window_messages} of {st.stored_messages} messages in context, {st.window_tokens}/{st.token_budget} tokens
+          {st.summarized_messages > 0 && <>; {st.summarized_messages} older messages summarised</>}
+          {st.summary && <div className="muted">Summary: {st.summary}</div>}
+        </div>
+      ) : (
+        <div className="muted small">Checkpointed per session; shows after the first message.</div>
+      )}
+      <div className="small">
+        <b>Long-term</b> (across sessions)
+      </div>
+      {!memory?.enabled ? (
+        <div className="muted small">Disabled.</div>
+      ) : (
+        <>
+          {Object.keys(profile).length === 0 && (memory.episodes ?? []).length === 0 && (
+            <div className="muted small">Nothing remembered yet. Tell it a preference, or start a new conversation.</div>
+          )}
+          <ul>
+            {Object.entries(profile).map(([k, v]) => (
+              <li key={k} className="small">
+                {PREF_LABELS[k] ?? k}: <b>{v.value}</b>
+                {v.previous && <span className="muted"> (was {v.previous})</span>}
+                <span className="muted"> - from session {v.source.session_id}</span>
+              </li>
+            ))}
+            {(memory.episodes ?? []).slice(0, 3).map((e) => (
+              <li key={e.id} className="small">
+                <span className="muted">{e.date}:</span> {e.summary}
+              </li>
+            ))}
+            {(memory.candidates ?? []).map((c) => (
+              <li key={c.id} className="small warn-text">
+                Pending staff review (not used by the assistant): {c.statement}
+              </li>
+            ))}
+          </ul>
+          {turn?.memory?.long_term?.extraction_scheduled && (
+            <div className="muted small">Last message may contain a preference: extraction scheduled in the background (shows here in a few seconds).</div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function Summarizer() {
   const [text, setText] = useState(SAMPLE_TRANSCRIPT)
   const [result, setResult] = useState<MedicalSummary | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [audioInfo, setAudioInfo] = useState<AudioSummary | null>(null)
+
+  async function fromAudio(file: Blob, name: string) {
+    setBusy(true)
+    setError(null)
+    setAudioInfo(null)
+    try {
+      const res = await api.summarizeAudio(file, name)
+      setText(res.transcript)
+      setResult(res.summary)
+      setAudioInfo(res)
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sampleRecording() {
+    const blob = await (await fetch('/consultation-sample.mp3')).blob()
+    await fromAudio(blob, 'consultation-sample.mp3')
+  }
 
   async function run() {
     setBusy(true)
@@ -314,6 +434,33 @@ function Summarizer() {
   return (
     <main className="grid two">
       <section className="panel">
+        <h2>From a recording</h2>
+        <audio controls src="/consultation-sample.mp3" style={{ width: '100%' }} aria-label="Sample consultation recording" />
+        <div className="row">
+          <button onClick={() => void sampleRecording()} disabled={busy}>
+            {busy ? 'Working...' : 'Transcribe sample recording'}
+          </button>
+          <label className="secondary small" style={{ cursor: 'pointer' }}>
+            Upload a recording
+            <input
+              type="file"
+              accept="audio/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0]
+                if (f) void fromAudio(f, f.name)
+                e.target.value = ''
+              }}
+            />
+          </label>
+        </div>
+        {audioInfo && (
+          <div className="muted small">
+            {audioInfo.model} on this machine · language {audioInfo.language} · {audioInfo.audio_seconds}s of audio ·
+            transcribed in {(audioInfo.transcribe_ms / 1000).toFixed(1)}s · total {(audioInfo.latency_ms / 1000).toFixed(1)}s
+            (the recording is not stored or sent anywhere)
+          </div>
+        )}
         <h2>Doctor-patient transcript</h2>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={16} aria-label="Transcript" />
         <button onClick={() => void run()} disabled={busy || text.trim().length < 20}>

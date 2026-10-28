@@ -55,6 +55,40 @@ export interface ChatResponse {
   trace: TraceStep[]
   usage: { input_tokens: number; output_tokens: number; llm_calls: number }
   latency_ms: number
+  memory?: TurnMemory | null
+}
+
+export interface TurnMemory {
+  short_term?: {
+    stored_messages: number
+    window_messages: number
+    window_tokens: number
+    token_budget: number
+    summary: string
+    summarized_messages: number
+    folded_this_turn: number
+  }
+  long_term?: {
+    enabled?: boolean
+    preferences?: Record<string, string>
+    recalled_episodes?: string[]
+    extraction_scheduled?: boolean
+  }
+}
+
+export interface MemoryItem {
+  value: string
+  previous?: string | null
+  source: { session_id: string; extractor: string; at: string }
+}
+
+export interface PatientMemory {
+  enabled: boolean
+  namespace?: string[]
+  profile?: Record<string, MemoryItem>
+  episodes?: { id: string; summary: string; topics: string[]; open_item: string | null; date: string }[]
+  candidates?: { id: string; statement: string; status: string }[]
+  audit?: { op: string; field: string; before: unknown; after: unknown; at: string; session_id: string }[]
 }
 
 export interface MedicalSummary {
@@ -78,11 +112,39 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T
 }
 
+export interface AudioSummary {
+  transcript: string
+  language: string
+  audio_seconds: number
+  transcribe_ms: number
+  model: string
+  summary: MedicalSummary
+  latency_ms: number
+}
+
+async function upload<T>(path: string, file: Blob, name: string): Promise<T> {
+  const form = new FormData()
+  form.append('file', file, name)
+  const res = await fetch(`/api${path}`, { method: 'POST', body: form }) // browser sets the multipart boundary
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body?.error?.message ?? `Request failed (${res.status})`)
+  return body as T
+}
+
 export const api = {
   patient: (id: string) => request<Patient>(`/patients/${id}`),
   bookings: (patientId: string) => request<Booking[]>(`/bookings?patientId=${encodeURIComponent(patientId)}`),
   chat: (message: string, sessionId: string, patientId: string) =>
     request<ChatResponse>('/chat', { method: 'POST', body: JSON.stringify({ message, sessionId, patientId }) }),
+  endSession: (sessionId: string, patientId: string) =>
+    request<{ episode_scheduled: boolean }>(
+      `/chat/sessions/${encodeURIComponent(sessionId)}/end?patientId=${encodeURIComponent(patientId)}`,
+      { method: 'POST' },
+    ),
+  memory: (patientId: string) => request<PatientMemory>(`/patients/${patientId}/memory`),
+  forget: (patientId: string) =>
+    request<{ deleted: Record<string, number> }>(`/patients/${patientId}/memory`, { method: 'DELETE' }),
+  summarizeAudio: (file: Blob, name: string) => upload<AudioSummary>('/summarize/audio', file, name),
   summarize: (transcript: string) =>
     request<{ summary: MedicalSummary; latency_ms: number }>('/summarize', {
       method: 'POST',

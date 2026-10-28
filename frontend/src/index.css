@@ -76,3 +76,7 @@ pre { background: #f6f8fa; padding: 12px; border-radius: 6px; font-size: 13px; w
   .grid { grid-template-columns: 1fr; height: auto; }
   .panel.chat { height: 70vh; }
 }
+.memory { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+.memory ul { padding-left: 18px; margin: 6px 0; }
+.memory li { margin-bottom: 4px; }
+.warn-text { color: var(--warn); }
