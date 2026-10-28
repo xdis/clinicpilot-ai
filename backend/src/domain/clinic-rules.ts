@@ -132,3 +132,41 @@ export function isSpecialtyAllowed(treatmentCategory: string, doctorSpecialty: s
   const allowed = CATEGORY_TO_SPECIALTIES[treatmentCategory];
   return !!allowed && allowed.includes(doctorSpecialty);
 }
+
+export interface BusyInterval {
+  start: number; // minutes since midnight
+  end: number;
+  id: string;
+  label: string; // e.g. "B1004, 11:00-11:45"
+}
+
+const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+export function interval(time: string, durationMinutes: number, label: string): BusyInterval {
+  const start = minutesOf(time);
+  return { start, end: start + durationMinutes, id: label, label: `${label}, ${hhmm(start)}-${hhmm(start + durationMinutes)}` };
+}
+
+/** First existing appointment that overlaps [start, start + duration), half-open so back-to-back is fine. */
+export function findOverlap(busy: BusyInterval[], time: string, durationMinutes: number): BusyInterval | undefined {
+  const start = minutesOf(time);
+  const end = start + durationMinutes;
+  return busy.find((b) => start < b.end && b.start < end);
+}
+
+/** Up to `limit` free start times that day (every `step` minutes, inside opening hours, after `notBefore`). */
+export function freeStarts(
+  operatingHours: string,
+  date: string,
+  durationMinutes: number,
+  busy: BusyInterval[],
+  { step = 30, limit = 3, notBefore = -1 }: { step?: number; limit?: number; notBefore?: number } = {},
+): string[] {
+  const window = parseOperatingHours(operatingHours)[dayOfWeek(date)];
+  if (!window) return [];
+  const out: string[] = [];
+  for (let t = window.open; t + durationMinutes <= window.close && out.length < limit; t += step) {
+    if (t > notBefore && !findOverlap(busy, hhmm(t), durationMinutes)) out.push(hhmm(t));
+  }
+  return out;
+}

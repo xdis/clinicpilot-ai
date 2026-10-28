@@ -135,4 +135,57 @@ describe('ClinicPilot backend (e2e)', () => {
       .expect(404);
     expect(res.body.error.code).toBe('DOCTOR_NOT_FOUND');
   });
+
+  describe('appointment conflicts (beyond the brief)', () => {
+    const book = (body: Record<string, string>) => request(app.getHttpServer()).post('/api/bookings').send(body);
+
+    it('rejects an overlapping slot for the same doctor and suggests free times', async () => {
+      await book({ patientId: 'P002', doctorId: 'D104', treatmentId: 'T005', bookingDate: '2026-11-02', bookingTime: '11:00' }).expect(201);
+      const res = await book({ patientId: 'P003', doctorId: 'D104', treatmentId: 'T005', bookingDate: '2026-11-02', bookingTime: '11:30' }).expect(422);
+      expect(res.body.error.message).toContain('Dr. James Wilson is already booked at that time');
+      expect(res.body.error.message).toContain('Free times that day: 08:00, 08:30, 09:00');
+      await book({ patientId: 'P003', doctorId: 'D104', treatmentId: 'T005', bookingDate: '2026-11-02', bookingTime: '11:45' }).expect(201); // back-to-back
+    });
+
+    it('rejects a second appointment for the same patient at the same time', async () => {
+      const res = await book({ patientId: 'P002', doctorId: 'D101', treatmentId: 'T001', bookingDate: '2026-11-02', bookingTime: '11:15' }).expect(422);
+      expect(res.body.error.message).toContain('You already have an appointment at that time');
+    });
+
+    it('says so clearly when the patient asks for an appointment they already have', async () => {
+      const res = await book({ patientId: 'P001', doctorId: 'D101', treatmentId: 'T001', bookingDate: '2026-11-05', bookingTime: '09:00' }).expect(422);
+      expect(res.body.error.message).toBe('You already have this appointment (B1001, 09:00-09:30).');
+    });
+
+    it('a retried request with the same idempotency key gets its booking back, even when sent concurrently', async () => {
+      const body = { patientId: 'P002', doctorId: 'D101', treatmentId: 'T004', bookingDate: '2026-11-04', bookingTime: '10:00', idempotencyKey: 'retry-1' };
+      const results = await Promise.all([book(body), book(body)]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 201]);
+      expect(results[0].body.booking.bookingId).toBe(results[1].body.booking.bookingId);
+    });
+
+    it('lets only one of two simultaneous requests take the same slot', async () => {
+      const body = { doctorId: 'D101', treatmentId: 'T004', bookingDate: '2026-11-03', bookingTime: '09:00' };
+      const results = await Promise.all([book({ ...body, patientId: 'P002' }), book({ ...body, patientId: 'P003' })]);
+      const statuses = results.map((r) => r.status).sort();
+      expect(statuses[0]).toBe(201);
+      expect([409, 422]).toContain(statuses[1]);
+    });
+  });
+
+  describe('consultation recording upload', () => {
+    it('requires a file', async () => {
+      const res = await request(app.getHttpServer()).post('/api/summarize/audio').expect(400);
+      expect(res.body.error.code).toBe('AUDIO_REQUIRED');
+    });
+
+    it('accepts multipart audio and forwards it to the AI service', async () => {
+      process.env.AI_SERVICE_URL = 'http://127.0.0.1:9'; // nothing listens: 503 proves parsing + forwarding happened
+      const res = await request(app.getHttpServer())
+        .post('/api/summarize/audio')
+        .attach('file', Buffer.from('ID3fake'), { filename: 'visit.mp3', contentType: 'audio/mpeg' });
+      expect(res.status).toBe(503);
+      expect(res.body.error.code).toBe('AI_SERVICE_UNAVAILABLE');
+    });
+  });
 });

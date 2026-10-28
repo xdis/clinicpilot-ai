@@ -1,5 +1,8 @@
 import {
   checkWithinOpeningHours,
+  findOverlap,
+  freeStarts,
+  interval,
   clinicTimezone,
   dayOfWeek,
   isSpecialtyAllowed,
@@ -41,5 +44,20 @@ describe('clinic rules', () => {
   it('infers the clinic timezone from the address', () => {
     expect(clinicTimezone('123 Medical Center Way, Suite 400, New York, NY 10001')).toBe('America/New_York');
     expect(clinicTimezone('456 Ocean Ave, Building B, Santa Monica, CA 90401')).toBe('America/Los_Angeles');
+  });
+
+  it('detects overlapping appointments using each treatment duration (back-to-back is fine)', () => {
+    const busy = [interval('11:00:00', 45, 'B1')]; // 11:00-11:45
+    expect(findOverlap(busy, '11:30:00', 30)?.label).toBe('B1, 11:00-11:45');
+    expect(findOverlap(busy, '10:30:00', 45)).toBeDefined(); // ends inside
+    expect(findOverlap(busy, '11:45:00', 30)).toBeUndefined(); // starts when the other ends
+    expect(findOverlap(busy, '10:30:00', 30)).toBeUndefined(); // ends when the other starts
+  });
+
+  it('suggests free start times inside opening hours', () => {
+    const busy = [interval('09:00:00', 30, 'B1'), interval('09:30:00', 30, 'B2')];
+    expect(freeStarts(SUNSET, '2026-10-26', 30, busy)).toEqual(['10:00', '10:30', '11:00']);
+    expect(freeStarts(SUNSET, '2026-10-31', 30, [])).toEqual([]); // Saturday: closed
+    expect(freeStarts(SUNSET, '2026-10-26', 30, [], { notBefore: 15 * 60 + 59 })).toEqual(['16:00', '16:30']);
   });
 });

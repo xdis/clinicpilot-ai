@@ -1,3 +1,4 @@
+import './tracing'; // must stay first: OpenTelemetry patches modules before they load
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';

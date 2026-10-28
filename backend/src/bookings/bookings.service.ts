@@ -9,6 +9,9 @@ import {
   minutesOf,
   nowMinutesIn,
   todayIn,
+  findOverlap,
+  freeStarts,
+  interval,
 } from '../domain/clinic-rules';
 import { CreateBookingDto, ListBookingsQuery } from './dto/booking.dto';
 
@@ -128,6 +131,51 @@ export class BookingsService {
       treatment.durationMinutes,
     );
     if (!slot.ok) problems.push(slot.reason!);
+    if (!problems.length) problems.push(...(await this.findConflicts(dto, doctor, treatment.durationMinutes, today, nowMin)));
+    return problems;
+  }
+
+  /**
+   * Beyond the brief (which allows assuming every slot is free): a doctor cannot see two patients at once and a
+   * patient cannot be in two appointments at once. Intervals use each treatment's duration, so a 45-minute
+   * consultation at 11:00 also blocks 11:30. The database backs this up for identical start times
+   * (partial unique index, see the slot_unique migration).
+   */
+  private async findConflicts(
+    dto: CreateBookingDto,
+    doctor: { id: string; fullName: string; clinic: { operatingHours: string } },
+    durationMinutes: number,
+    today: string,
+    nowMin: number | null,
+  ): Promise<string[]> {
+    const time = normalizeTime(dto.bookingTime);
+    const sameDay = await this.prisma.patientBooking.findMany({
+      where: {
+        bookingDate: dto.bookingDate,
+        status: { not: 'Cancelled' },
+        OR: [{ doctorId: dto.doctorId }, { patientId: dto.patientId }],
+      },
+      include: { treatment: true },
+    });
+    const toInterval = (b: (typeof sameDay)[number]) => interval(b.bookingTime, b.treatment.durationMinutes, b.id);
+    const doctorBusy = sameDay.filter((b) => b.doctorId === dto.doctorId).map(toInterval);
+    const patientBusy = sameDay.filter((b) => b.patientId === dto.patientId).map(toInterval);
+    const problems: string[] = [];
+    const clash = findOverlap(doctorBusy, time, durationMinutes);
+    const own = findOverlap(patientBusy, time, durationMinutes);
+    if (own && clash && own.id === clash.id) {
+      return [`You already have this appointment (${own.label}).`]; // same booking: one clear message
+    }
+    if (clash) {
+      const free = freeStarts(doctor.clinic.operatingHours, dto.bookingDate, durationMinutes, doctorBusy, {
+        notBefore: dto.bookingDate === today && nowMin !== null ? nowMin : -1,
+      });
+      problems.push(
+        `${doctor.fullName} is already booked at that time (${clash.label}).` +
+          (free.length ? ` Free times that day: ${free.join(', ')}.` : ' No other free time that day.'),
+      );
+    }
+    if (own) problems.push(`You already have an appointment at that time (${own.label}).`);
     return problems;
   }
 
@@ -156,12 +204,18 @@ export class BookingsService {
         return { booking: toView(created), idempotentReplay: false };
       } catch (err) {
         if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002' || attempt >= 3) throw err;
+        // SQLite may name any violated unique index, so the idempotent replay is checked first:
+        // a client retrying while its first request is still in flight must get its booking back, not a 409
         if (dto.idempotencyKey) {
           const existing = await this.prisma.patientBooking.findUnique({
             where: { idempotencyKey: dto.idempotencyKey },
             include: bookingInclude,
           });
-          if (existing) return { booking: toView(existing), idempotentReplay: true };
+          if (existing) return { booking: toView(this.assertSameRequest(existing, dto)), idempotentReplay: true };
+        }
+        if (JSON.stringify(err.meta ?? {}).includes('doctor_id')) {
+          // a concurrent request took the same doctor slot between our check and our insert
+          throw new ConflictException({ code: 'SLOT_TAKEN', message: 'That time was just booked by someone else.' });
         }
         // otherwise a concurrent insert took the same booking id: retry with the next one
       }
