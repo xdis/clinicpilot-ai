@@ -11,8 +11,8 @@
   "treatment fact": "5/5",
   "wrong duration": "5/5",
   "live reply": "6/6",
-  "live reply, one number changed": "2/2",
-  "live reply + invented service": "4/4"
+  "live reply, one number changed": "3/3",
+  "live reply + invented service": "3/3"
  },
  "accuracy": 1.0,
  "error_recall": 1.0,

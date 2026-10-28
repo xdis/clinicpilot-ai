@@ -11,9 +11,9 @@ An AI clinic assistant MVP. A patient chats in natural language to ask about cli
 - **Deterministic guardrails**: emergency short-circuit, medical scope, prompt-injection handling, clinic opening-hours / specialty / date validation, idempotent booking creation.
 - **Short-term and long-term memory**: a token-budgeted window with a rolling summary per conversation; per-patient preferences and past-conversation episodes in a LangGraph Store, written in the background and validated in code. Medical facts never become preferences or prompt memory (they are parked for staff review), every write is audited, and one call erases a patient's memory and sessions. The UI's Memory panel shows both.
 - **Agent trace panel** in the UI: intent, steps, tool calls, sources, tokens and latency for every turn.
-- **Observability**: one trace id from the NestJS gateway through FastAPI into the LangGraph agent. OpenTelemetry (Collector → Jaeger) for service spans; self-hosted Langfuse for the agent: nodes, LLM generations, background memory writes, per-turn scores and user feedback. Patient identifiers are pseudonymised and PII is masked before export.
+- **Observability**: one trace id from the NestJS gateway through FastAPI into the LangGraph agent. OpenTelemetry (Collector → Jaeger) for service spans; self-hosted Langfuse for the agent: nodes, LLM generations, background memory writes, per-turn scores, and user feedback through the API endpoint `POST /v1/feedback` (UI hook is a next step). Patient identifiers are pseudonymised and PII is masked before export.
 - **Evaluation framework** (`evals/agent_eval.py`): outcome checks, trajectory match (agentevals), groundedness with a calibrated LLM judge (openevals), LongMemEval-style memory cases, pass^k consistency, latency/token/cost, regression gates against a baseline, every run recorded as a Langfuse experiment.
-- **Tested and evaluated**: 108 automated tests (offline, run in CI), a 32-scenario + 7 memory-case evaluation against the real LLM (3 repetitions), and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
+- **Tested and evaluated**: 113 automated tests (offline, run in CI), a 32-scenario + 7 memory-case evaluation against the real LLM (3 repetitions), and a black-box QA pass of 55 conversations whose findings were fixed and added as regression tests.
 - Bonus: transcript summarizer **from text or a voice recording** (local Whisper, the audio never leaves the machine), appointment-conflict checks with a race-safe database constraint, Docker Compose, Kubernetes (tested on kind).
 
 Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.
@@ -26,8 +26,11 @@ Design details, trade-offs and results: **[TECH_DOC.md](TECH_DOC.md)**.
 ├── frontend/          # React + Vite: chat, live bookings, agent trace, summarizer
 ├── mock-data/         # Provided CSV datasets (seed source)
 ├── evals/             # Scenario evaluation (cases + runner + latest report)
-├── scripts/           # setup.sh, dev.sh
-├── k8s/               # Reference Kubernetes manifests
+├── scripts/           # setup.sh, dev.sh, demo-up.sh, demo-check.sh, kind-up.sh, langfuse-env.sh,
+│                      # memory_acceptance.py, mutation_check.py
+├── observability/     # Self-hosted Langfuse + OpenTelemetry Collector / Jaeger (Docker Compose)
+├── k8s/               # Kubernetes manifests + kind cluster config
+├── .githooks/         # pre-commit secret scan (gitleaks)
 ├── docker-compose.yml
 ├── TECH_DOC.md
 └── README.md
@@ -109,17 +112,9 @@ docker compose up --build                    # UI http://localhost:8080, API htt
 
 The backend container migrates and seeds the database on start (data persists in a named volume). The AI service is reachable only inside the compose network; clients go through the backend.
 
-### Kubernetes (reference)
+### Kubernetes
 
-```bash
-docker build -t clinicpilot/backend:latest -f backend/Dockerfile .
-docker build -t clinicpilot/ai-service:latest ai-service
-docker build -t clinicpilot/frontend:latest frontend
-# push to your registry (or load into kind/minikube), then:
-kubectl create namespace clinicpilot
-kubectl create secret generic clinicpilot-llm -n clinicpilot --from-literal=LLM_API_KEY=...
-kubectl apply -f k8s/clinicpilot.yaml
-```
+Use `./scripts/kind-up.sh` (see [Kubernetes (local kind cluster)](#kubernetes-local-kind-cluster) below): it builds the `clinicpilot/*:dev` images, loads them into kind and creates the `clinicpilot-secrets` secret from `ai-service/.env`. For another cluster, push those images to your registry, `kubectl apply -f k8s/clinicpilot.yaml` (it creates the namespace) and create the same secret (`LLM_API_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`).
 
 ## Demo script (about 3 minutes)
 
@@ -166,19 +161,19 @@ Backend (`http://localhost:3000/api`, full schema at `/api/docs`):
 | `DELETE` | `/patients/:id/memory` | Right to erasure: long-term memory and all chat sessions of the patient |
 | `GET` | `/health` | Liveness + database check |
 
-AI service (`http://localhost:8000`): `POST /v1/chat`, `POST /v1/summarize`, `POST /v1/sessions/{id}/reset`, `POST /v1/sessions/{id}/end`, `GET|DELETE /v1/patients/{id}/memory`, `GET /health`.
+AI service (`http://localhost:8000`): `POST /v1/chat`, `POST /v1/summarize`, `POST /v1/summarize/audio`, `POST /v1/feedback` (user feedback → Langfuse score), `POST /v1/sessions/{id}/reset`, `POST /v1/sessions/{id}/end`, `GET|DELETE /v1/patients/{id}/memory`, `GET /health`.
 MCP server: `cd ai-service && .venv/bin/python -m app.mcp_server` (stdio) exposes `get_patient_profile`, `list_bookings`, `get_catalog`, `validate_booking`, `create_booking`.
 
 ## Tests and evaluation
 
 ```bash
 make test        # backend unit + API tests, AI-service offline tests (no API key), frontend lint + build
-make eval        # 30 scripted conversations against the running stack with the real LLM
+make eval        # 32 scripted conversations against the running stack with the real LLM
 ai-service/.venv/bin/python scripts/memory_acceptance.py   # 21 memory checks against the running stack (PASS/FAIL each)
 cd ai-service && LLM_PROVIDER=fake .venv/bin/python ../scripts/mutation_check.py   # remove each memory guard, expect its test to fail
 ```
 
-Latest evaluation: 24/24 cases, 36/36 intents, 89/89 checks, p50 latency 1.2-1.3 s (three runs). See `evals/results/latest.md`. The eval expects the seed data, so `make eval` resets demo bookings before and after.
+Latest `make eval` run (2026-10-28, when the set had 30 cases; now 32): 30/30 cases, 43/43 intents, 112/112 checks, p50 latency 1.2 s. See `evals/results/latest.md`. The eval expects the seed data, so `make eval` resets demo bookings before and after.
 
 ## Observability and evaluation
 
@@ -191,7 +186,10 @@ docker compose -f observability/langfuse/docker-compose.yml \
 # LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY (+ LANGFUSE_HOST=http://localhost:3100), set OTEL_EXPORTER_OTLP_ENDPOINT
 # for both services, then start the app as usual.
 
-# agent evaluation (stack running with EVAL_EXPOSE_GROUNDING=true and SHORT_TERM_MAX_TOKENS=400)
+# agent evaluation: the AI service must run with EVAL_EXPOSE_GROUNDING=true and SHORT_TERM_MAX_TOKENS=400
+# (demo-up.sh sets only the latter, so restart the AI service with both). agent_eval reads Langfuse keys from the
+# environment only: export LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST=http://localhost:3100 to record
+# the run as a Langfuse experiment.
 ai-service/.venv/bin/python evals/judge_calibration.py --live                        # check the judge first
 ai-service/.venv/bin/python evals/agent_eval.py --judge --repeat 3 --baseline evals/results/baseline.json \
     --price-in 0.30 --price-out 1.20      # DeepSeek peak list price per 1M tokens, cache miss (2026-10-28)

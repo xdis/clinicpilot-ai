@@ -207,7 +207,7 @@ erDiagram
 | Specialty compatibility | treatment category → allowed specialties (see assumptions) |
 | Not in the past | compared with "today" in the **clinic's timezone** (inferred from the address: NY → America/New_York, CA → America/Los_Angeles); a time earlier than now on the same day is rejected; impossible dates (2026-02-30) fail validation |
 | Inside opening hours | parses strings like `Mon-Fri: 8:00 AM - 6:00 PM, Sat: 9:00 AM - 1:00 PM, Sun: Closed`; the whole appointment (start + duration) must fit |
-| Conflicts | not checked, as allowed by the brief |
+| Conflicts (beyond the brief) | no overlapping appointments for the doctor or the patient (treatment duration counts; back-to-back allowed); the error lists the doctor's free times that day. A partial unique index on `(doctor_id, booking_date, booking_time)` (not Cancelled) closes the race: a Prisma `P2002` becomes 409 `SLOT_TAKEN` (see §11) |
 
 Errors use one envelope: `{"error": {"code", "message", "details", "requestId"}}` (global exception filter). The agent turns `BOOKING_INVALID` details into a plain-language explanation.
 
@@ -228,27 +228,27 @@ Errors use one envelope: `{"error": {"code", "message", "details", "requestId"}}
 | Suite | Scope | Result |
 |---|---|---|
 | Backend unit (`npm test`) | opening-hours parser, closed days, appointment overrun, specialty mapping, timezone, overlap detection (back-to-back allowed), free-slot suggestions | 7 passed |
-| Backend API (`npm run test:e2e`) | real Nest app + fresh SQLite: list, profile, create, idempotent replay, idempotency-key reuse (409) and `Idempotency-Key` header, rule violations (3 at once), dry-run validation, DTO validation, impossible date, snake_case `patient_id` on `/api/chat`, 404, overlapping slot rejected with free times, back-to-back allowed, same-patient clash, duplicate of an existing appointment, two simultaneous requests for one slot (only one wins), audio upload required / multipart forwarded | 18 passed |
-| AI service memory (`tests/test_memory.py`, offline) | token window keeps whole turns and never empties, no gap (every message is in the window or the summary, checked turn by turn), turn cap folds too, rolling summary keeps early facts and drops folded turns, booking draft survives trimming, preferences across sessions with provenance, suggest-not-book, update keeps previous value + audit, withdrawal, catalog validation, no free-text profile fields, questions / third-party statements / injection not stored, medical statements parked for staff (only from the latest message, deduplicated) and kept out of episodes and prompts, per-patient isolation, episode recall ranking and skipping irrelevant episodes, no stale time-of-day reminder, retention on disk, erasure of memory + sessions with hashed record, tombstone drops queued writes, SqliteStore survives restart. Key guards were mutation-tested (remove the guard, the test fails: 11/11, `scripts/mutation_check.py`). | 34 passed |
+| Backend API (`npm run test:e2e`) | real Nest app + fresh SQLite: list, profile, create, idempotent replay, idempotency-key reuse (409) and `Idempotency-Key` header, rule violations (3 at once), dry-run validation, DTO validation, impossible date, snake_case `patient_id` on `/api/chat`, 404, overlapping slot rejected with free times, back-to-back allowed, same-patient clash, duplicate of an existing appointment, two simultaneous requests for one slot (only one wins), audio upload required / multipart forwarded | 19 passed |
+| AI service memory (`tests/test_memory.py`, offline) | token window keeps whole turns and never empties, no gap (every message is in the window or the summary, checked turn by turn), turn cap folds too, rolling summary keeps early facts and drops folded turns, booking draft survives trimming, preferences across sessions with provenance, suggest-not-book, update keeps previous value + audit, withdrawal, catalog validation, no free-text profile fields, questions / third-party statements / injection not stored, medical statements parked for staff (only from the latest message, deduplicated) and kept out of episodes and prompts, per-patient isolation, episode recall ranking and skipping irrelevant episodes, no stale time-of-day reminder, retention on disk, erasure of memory + sessions with hashed record, tombstone drops queued writes, SqliteStore survives restart. Key guards were mutation-tested (remove the guard, the test fails: 11/11, `scripts/mutation_check.py`). | 35 passed |
 | Memory acceptance (`scripts/memory_acceptance.py`, running stack, real LLM) | 21 checks across write, safety (incl. no duplicate staff-review items), guardrails, episodes, recall, update, facts-from-database, short-term summary and erasure; PASS/FAIL per check | 21/21 (DeepSeek, two consecutive runs, 2026-10-28); the original 30-scenario eval still 30/30 twice |
-| AI service observability + audio (`tests/test_telemetry.py`, `tests/test_audio.py`, offline) | one trace per turn with graph nodes, session and pseudonymous user (in-memory span exporter); background memory span joins the turn's trace; payload masking; online scores; a turn succeeds with Langfuse down; grounding only in evaluation mode; doctor's notes reach the answer; audio upload → transcript → summary with a stub model, media-type / empty / silent / not-installed errors; real Whisper on the sample with `RUN_WHISPER=1` | 14 passed (+1 opt-in) |
+| AI service observability + audio (`tests/test_telemetry.py`, `tests/test_audio.py`, offline) | one trace per turn with graph nodes, session and pseudonymous user (in-memory span exporter); background memory span joins the turn's trace; payload masking; online scores; a turn succeeds with Langfuse down; grounding only in evaluation mode; doctor's notes reach the answer; audio upload → transcript → summary with a stub model, media-type / empty / silent / not-installed errors; real Whisper on the sample with `RUN_WHISPER=1` | 17 passed (+1 opt-in) |
 | AI service (`pytest`, offline) | full agent with a rule-based `FakeLLM` and in-memory backend: routing, slot filling, inference, confirmation gate, correction after the summary, closed-day rejection, emergency short-circuit, injection, booking for a family member or another patient refused, unknown doctor not replaced, invalid calendar date explained, no pediatrician offered to adults, appointment list rendered from data (with closed-day flag), multi-part questions, child bookings refused even via follow-ups, pediatric services not booked on an adult record, a repeated "yes" after booking does not reopen it, the visit reason from an earlier turn is kept, a doctor name is not taken as a confirmation, a wrong-specialty doctor is not substituted, adults asking a pediatrician are redirected, abandon, session isolation, retrieval, entity resolution, citation guard, **MCP server contract test** (in-process MCP client, including list output), specialties the clinics don't offer answered before booking, slot taken between check and create (asks for another time) | 35 passed |
 | Frontend | ESLint + type-checked production build | clean |
-| **Scenario evals** (`make eval`, real LLM) | 30 multi-turn conversations | see below |
+| **Scenario evals** (`make eval`, real LLM) | 32 multi-turn conversations | see below |
 | **Black-box QA** (independent tester, real LLM) | 55 conversations + 30 direct API calls written without reading the code: date phrasings, typos, mind changes, Chinese/Cantonese, injection, other patients, double confirmation, concurrency, malformed requests | four rounds (47/55 → 48/55 → 50/55 → 54/55; 17/17 probes, 33/33 API checks), each round's findings fixed and turned into regression tests or eval cases, then re-run |
 
 CI (`.github/workflows/ci.yml`) runs the backend suites, the AI-service suite on Python 3.11 and 3.12, the frontend lint/build and a `docker compose build` on every push. The AI tests use `LLM_PROVIDER=fake`, so CI needs no API key and is deterministic.
 
-### Scenario evaluation (DeepSeek `deepseek-chat`, 2026-10-22)
+### Scenario evaluation (DeepSeek `deepseek-chat`, 2026-10-28, run when the set had 30 cases; now 32)
 
 | Metric | Value |
 |---|---|
-| Cases passed | 24 / 24 |
-| Intent accuracy | 36 / 36 turns (100%) |
-| Checks passed | 89 / 89 (intent, citations, tools, reply content, confirmation state, booking outcome) |
-| Booking outcome accuracy | 13 / 13 (booked exactly when expected, never otherwise) |
-| Latency p50 / p95 | 1.2-1.3 s / 2.4-2.6 s (three runs) |
-| Tokens per turn (avg) | ~1,750 |
+| Cases passed | 30 / 30 |
+| Intent accuracy | 43 / 43 turns (100%) |
+| Checks passed | 112 / 112 (intent, citations, tools, reply content, confirmation state, booking outcome) |
+| Booking outcome accuracy | 18 / 18 (booked exactly when expected, never otherwise) |
+| Latency p50 / p95 | 1.19 s / 2.24 s |
+| Tokens per turn (avg) | ~2,190 |
 
 Cases cover clinic info (hours, fees, languages, policies, preparation), symptom recommendations, booking queries, five booking paths (happy path, one-shot, pronoun reference after a recommendation, step-by-step slot filling, change before confirming), closed-day rejection, specialty mismatch, abandon, allergy, emergency, prompt injection, cancel request, out-of-scope and small talk. The latest report is written to `evals/results/latest.md`.
 
@@ -274,8 +274,8 @@ browser -> NestJS (OTel: http, express, nest, undici)  --traceparent-->  FastAPI
   general trace backend; a `mask` hook redacts e-mails, phone numbers and dates of birth before export; the collector
   drops request bodies and query strings.
 - **Online scores on every turn** (code-based, free): `citations_valid`, `guardrail` (none / emergency / injection /
-  refusal), `intent_confidence`, `latency_ms`, `llm_calls`, `tokens`, `memory_recalled`; plus `user_feedback` from the UI
-  (`POST /v1/feedback`). The response carries `trace_id` and `trace_url`.
+  refusal), `intent_confidence`, `latency_ms`, `llm_calls`, `tokens`, `memory_recalled`; plus `user_feedback` through the API
+  endpoint `POST /v1/feedback` (UI hook is a next step). The response carries `trace_id` and `trace_url`.
 - **Fail-safe:** everything is optional (no keys / endpoint = no-op). The trace URL needs a project lookup with retries,
   so it is resolved once in the background, never on the request path; a test proves a turn succeeds with Langfuse down.
 - **OpenTelemetry versions:** Python SDK 1.45.1 + `opentelemetry-instrumentation-fastapi/httpx` 0.66b1; Node
@@ -339,7 +339,7 @@ browser -> NestJS (OTel: http, express, nest, undici)  --traceparent-->  FastAPI
 ## 13. Limitations and next steps
 
 - Authentication and multi-patient access control (the patient id would come from the auth token).
-- Availability and conflict checks with doctor calendars; cancellation and rescheduling tools.
+- Doctor calendars (leave, breaks); cancellation and rescheduling tools.
 - PostgreSQL and multiple AI-service workers (the in-process lock that serialises turns would be replaced by per-session locking; `AsyncPostgresSaver` and `PostgresStore`; memory writes through a queue instead of an in-process worker).
 - Semantic recall for long-term memory (an embedding index on the store) once patients have many episodes.
 - Embedding-based retrieval once the knowledge base grows beyond a few dozen documents.

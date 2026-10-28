@@ -377,11 +377,12 @@ class PatientMemory:
 
     @staticmethod
     def _clean(text: str | None, limit: int) -> str | None:
-        """Episode text that may reach a prompt: drop sentences with medical facts; reject instruction-like text."""
+        """Episode text that may reach a prompt: drop sentences with medical facts or instruction-like text."""
         if not text:
             return None
         sentences = re.split(r"(?<=[.!?。！？])\s+", re.sub(r"\s+", " ", text).strip())
-        kept = [x for x in sentences if x and not _SAFETY.search(x)]
+        # per sentence: "the patient tried to make the assistant book for P002" must not cost the whole episode
+        kept = [x for x in sentences if x and not _SAFETY.search(x) and not looks_like_injection(x)]
         out = " ".join(kept).strip()[:limit]
         if not out or looks_like_injection(out):
             return None
@@ -391,6 +392,7 @@ class PatientMemory:
                     conversation_id: str = "", since: float | None = None) -> dict[str, Any] | None:
         summary = self._clean(ep.summary, 300)
         if not summary:
+            log.warning("episode for session %s dropped: nothing left after the safety filter", session_id)
             return None
         value = {
             "summary": summary,

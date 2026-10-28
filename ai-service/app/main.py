@@ -161,7 +161,7 @@ def _check_ids(session_id: str, patient_id: str) -> None:
 
 @app.post("/v1/feedback")
 def feedback(body: FeedbackRequest) -> dict:
-    """Thumbs up/down from the UI, stored as a Langfuse score on the turn's trace (online evaluation signal)."""
+    """User feedback (e.g. a UI thumbs up/down, not wired yet), stored as a Langfuse score on the turn's trace (online evaluation signal)."""
     OBS.score(body.trace_id, "user_feedback", 1 if body.value else 0, data_type="BOOLEAN", comment=body.comment)
     return {"status": "recorded" if OBS.langfuse is not None else "tracing_disabled"}
 
