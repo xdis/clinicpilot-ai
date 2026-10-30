@@ -17,7 +17,8 @@ APP = Path(__file__).resolve().parents[1] / "ai-service" / "app"
 # (guard, file, original code, mutated code, test that must fail)
 MUTATIONS = [
     ("episodes drop medical sentences", "memory.py",
-     "kept = [x for x in sentences if x and not _SAFETY.search(x)]", "kept = [x for x in sentences if x]",
+     "kept = [x for x in sentences if x and not _SAFETY.search(x) and not looks_like_injection(x)]",
+     "kept = [x for x in sentences if x and not looks_like_injection(x)]",
      "test_episodes_never_keep_medical_facts"),
     ("preferences about someone else are rejected", "memory.py",
      "if not _FIRST_PERSON.search(message) or _THIRD_PARTY.search(message):", "if not _FIRST_PERSON.search(message):",
